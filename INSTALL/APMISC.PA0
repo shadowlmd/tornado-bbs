@@ -1,0 +1,741 @@
+const
+  indexAPMISC   = 0;
+  indexAPPORT   = 100;
+  indexAPTIMER  = 200;
+  indexAPUART   = 300;
+  indexAPFOSSIL = 400;
+  indexAPDIGI14 = 500;
+  indexAPINT14  = 600;
+  indexAPCOM    = 700;
+
+  indexAPARCHIV = 1000;
+  indexAPZIP    = 1100;
+  indexAPLZH    = 1200;
+
+
+{$IFNDEF UseOPro}
+{$IFNDEF CompilingImport}
+type
+  {Abstract base for all APro objects}
+  RootPtr = ^Root;
+  Root = object
+    constructor Init;
+    destructor Done; virtual;
+  end;
+{$ENDIF}
+{$ENDIF}
+
+{$IFDEF UseTPro}
+type
+  {For accessing hi/lo words of a longint}
+  LH =
+    record
+      L, H : Word;
+    end;
+  StringPtr = ^String;
+{$ENDIF}
+
+{$IFDEF Standalone}
+type
+  {For accessing hi/lo words of a longint}
+  LH =
+    record
+      L, H : Word;
+    end;
+
+  {For internal date/time manipulations}
+  Date = Word;
+  Time = LongInt;
+  DateTimeRec =
+    record
+      D : Date;
+      T : Time;
+    end;
+  DayType = (Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday);
+
+  StringPtr = ^String;
+
+const
+  MinYear  = 1900;
+  MaxYear  = 2078;
+  MinDate  = $0000;        {= 01/01/1900}
+  MaxDate  = $FF62;        {= 12/31/2078}
+  Date1900 = $0000;        {= 01/01/1900}
+  Date1980 = $7223;        {= 01/01/1980}
+  Date2000 = $8EAC;        {= 01/01/2000}
+  BadDate  = $FFFF;
+
+  Threshold2000 : Integer = 1900;
+
+  MinTime = 0;               {= 00:00:00 am}
+  MaxTime = 86399;           {= 23:59:59 pm}
+  BadTime = $FFFFFFFF;
+  First2Months = 58;         {1900 was not a leap year}
+  FirstDayOfWeek = Monday;   {01/01/1900 was a Monday}
+
+  SecondsInDay = 86400;      {number of seconds in a day}
+  SecondsInHour = 3600;      {number of seconds in an hour}
+  SecondsInMinute = 60;      {number of seconds in a minute}
+  HoursInDay = 24;           {number of hours in a day}
+  MinutesInHour = 60;        {number of minutes in an hour}
+{$ENDIF}
+
+const
+  {Fax constants}
+  DefSig : Array[0..5] of Char = 'APF10'#26;    {Fax signature}
+  FaxFileExt : String[3]       = 'APF';         {Default extension}
+
+  {Error types}
+  etFatal          = 0;          {Fatal errors}
+  etNonFatal       = 1;          {Non-fatal I/O errors}
+  etWarning        = 2;          {Warning messages (currently not used)}
+  etMessage        = 3;          {Status information (generally should
+                                  not be acted on by an error handler)}
+
+  {Error prefixes}
+  epFatal          = etFatal * 10000;
+  epNonFatal       = etNonFatal * 10000;
+  epWarning        = etWarning * 10000;
+  epMessage        = etMessage * 10000;
+
+  {Error/status code constants}
+  ecOk                     = 0;     {Reset value for AsyncStatus}
+
+  {+++General error codes (0-999)+++}
+
+  {DOS errors}
+  ecFileNotFound           = 0002;  {File not found}
+  ecPathNotFound           = 0003;  {Path not found}
+  ecTooManyFiles           = 0004;  {Too many open files}
+  ecAccessDenied           = 0005;  {File access denied}
+  ecInvalidHandle          = 0006;  {Invalid file handle}
+  ecOutOfMemory            = 0008;  {Insufficient memory}
+  ecInvalidDrive           = 0015;  {Invalid drive}
+  ecNoMoreFiles            = 0018;  {No more files}
+
+  {Turbo Pascal I/O errors}
+  ecDiskRead               = 0100;  {Attempt to read beyond end of file}
+  ecDiskFull               = 0101;  {Disk is full}
+  ecNotAssigned            = 0102;  {File not Assign-ed}
+  ecNotOpen                = 0103;  {File not open}
+  ecNotOpenInput           = 0104;  {File not open for input}
+  ecNotOpenOutput          = 0105;  {File not open for output}
+  ecInvalidFormat          = 0106;  {Invalid format for packed window}
+
+  {DOS critical errors}
+  ecWriteProtected         = 0150;  {Disk is write-protected}
+  ecUnknownUnit            = 0151;  {Unknown disk unit}
+  ecDriveNotReady          = 0152;  {Drive is not ready}
+  ecUnknownCommand         = 0153;  {Unknown command}
+  ecCrcError               = 0154;  {Data error}
+  ecBadStructLen           = 0155;  {Bad request structure length}
+  ecSeekError              = 0156;  {Seek error}
+  ecUnknownMedia           = 0157;  {Unknown media type}
+  ecSectorNotFound         = 0158;  {Disk sector not found}
+  ecOutOfPaper             = 0159;  {Printer is out of paper}
+  ecDeviceWrite            = 0160;  {Device write error}
+  ecDeviceRead             = 0161;  {Device read error}
+  ecHardwareFailure        = 0162;  {General failure}
+
+  {+++Capacity or environmental errors (2900-2999)+++}
+
+  {APUART port errors}
+  ecNoMorePorts            = 2900;  {Can't open port, no slots available}
+  ecOverrunError           = 2901;  {UART receiver overrun}
+  ecParityError            = 2902;  {UART receiver parity error}
+  ecFramingError           = 2903;  {UART receiver framing error}
+
+  {APINT14 port errors}
+  ecTransmitFailed         = 2910;  {Int14 transmit failed}
+  ecUartError              = 2911;  {Int14 receive failed}
+
+  {APCOM/OOCOM errors/status}
+  ecBlockIncomplete        = 2920;  {Block shorter than requested}
+  ecBufferIsFull           = 2921;  {No room for new char in buffer}
+  ecBufferIsEmpty          = 2922;  {No characters to get}
+  ecTimeout                = 2923;  {Timed out waiting for something}
+  ecStringIncomplete       = 2924;  {String shorter than requested}
+  ecStringOverrun          = 2925;  {String longer than 255}
+  ecUserAbort              = 2926;  {User aborted during "wait"}
+
+  {APMODEM/OOMODEM errors}
+  ecTableFull              = 2930;  {No room in table to add new entry}
+  ecNullCommand            = 2931;  {Modem - no command registered}
+
+  {Tracing/EventFile file errors}
+  ecEventFileError         = 2940;  {Failed to open or write to the event file}
+  ecTraceFileError         = 2941;  {Failed to open or write to the trace file}
+
+  {Other device layer errors}
+  ecNoFossil               = 2950;  {No fossil installed}
+  ecDigiFailure            = 2960;  {Generic Digiboard failure code}
+
+  {+++Warnings or user errors (7900-7999)+++}
+  {This category not current used by Async Professional}
+
+  {+++Programmer errors (8900-8999)+++}
+
+  {APCOM/OOCOM port errors}
+  ecBadPortNumber          = 8900;  {Out-of-range port number}
+  ecOutofRange             = 8901;  {General out-of-range error}
+  ecPortNotOpen            = 8902;  {Port not open}
+  ecInvalidBaudRate        = 8903;  {Bad baud rate for this device}
+  ecInvalidArgument        = 8904;  {General programming error}
+  ecNoDevice               = 8905;  {No device layer installed}
+  ecNotaUart               = 8906;  {Couldn't find a uart at this address}
+  ecInvalidParity          = 8907;  {Bad parity option for this device}
+  ecNotBuffered            = 8910;  {Operation only allowed on buffered ports}
+  ecNotSupported           = 8911;  {Function not supported by device-layer}
+
+  {+++Status codes (9800-9999)+++}
+
+  {APFAX error codes}
+  ecFaxVoiceCall           = 9800;  {Call is VOICE}
+  ecFaxDataCall            = 9801;  {Call is DATA}
+  ecFaxBusy                = 9802;  {called modem is busy}
+  ecFaxNoFontFile          = 9803;  {could not find font file}
+  ecFaxNoCASManager        = 9804;  {CASMGR TSR not installed}
+  ecFaxInitError           = 9805;  {unexpected response in init}
+  ecFaxTrainError          = 9806;  {Failed to train with remote modem}
+  ecFaxSessionError        = 9807;  {Error during session}
+  ecFaxNoConnect           = 9808;  {No connection after dial}
+  ecFaxPageError           = 9809;  {Failed to send page after retries}
+
+  {APABSPCL/OOABSPCL status codes}
+  ecInitFail               = 9900;  {Xmodem init failed}
+  ecInitCancel             = 9901;  {Xmodem init was canceled on request}
+  ecCancelRequested        = 9902;  {Cancel requested}
+  ecDuplicateBlock         = 9903;  {Duplicate block received}
+  ecSequenceError          = 9904;  {Wrong block number received}
+  ecDirNotFound            = 9905;  {Directory not found in protocol transmit}
+  ecNoMatchingFiles        = 9906;  {No matching files in protocol transmit}
+  ecLongPacket             = 9907;  {Long packet received during protocol}
+  ecendFile                = 9908;  {end of transmitted file}
+  ecHandshakeInProgress    = 9909;  {Initial protocol handshake in progress}
+  ecFileRenamed            = 9910;  {Incoming file was renamed}
+  ecFileAlreadyExists      = 9911;  {Incoming file already exists}
+  ecInvalidFilesize        = 9912;  {Ymodem header has bad file size}
+  ecInvalidDateTime        = 9913;  {Ymodem header has bad date/time}
+  ecUnexpectedChar         = 9914;  {Unexpected char during protocol}
+  ecBlockCheckError        = 9915;  {Incorrect CRC or checksum received}
+  ecNoSearchMask           = 9916;  {No search mask specified for transmit}
+  ecNoFilename             = 9917;  {No filename specifed in xmodem download}
+  ecAsciiReceiveInProgress = 9918;  {Ascii receive in progress}
+  ecFileRejected           = 9919;  {Receiver rejected file}
+  ecTooManyErrors          = 9920;  {Too many errors received during protocol}
+  ecBadFileList            = 9921;  {No end of list marker found in file list}
+
+  {APZMODEM/OOZMODEM status codes}
+  ecGotCrcE                = 9925;  {Zmodem - got CrcE DataSubpacket}
+  ecGotCrcW                = 9926;  {Zmodem - got CrcW DataSubpacket}
+  ecGotCrcQ                = 9927;  {Zmodem - got CrcQ DataSubpacket}
+  ecGotCrcG                = 9928;  {Zmodem - got CrcG DataSubpacket}
+  ecGarbage                = 9929;  {Zmodem - got garbage from remote}
+  ecSkipFile               = 9930;  {Zmodem - skip file}
+  ecBadPosition            = 9931;  {Zmodem - bad file position}
+  ecFileDoesntExist        = 9932;  {Zmodem - specified file doesn't exist}
+  ecCantWriteFile          = 9933;  {Zmodem - not allowed to overwrite file}
+  ecFailedToHandshake      = 9934;  {Zmodem - never got proper handshake}
+  ecNoFilesToReceive       = 9935;  {Zmodem - no files to receive}
+  ecBuffersTooSmall        = 9936;  {ZModem - port buffers too small}
+  ecGotHeader              = 9937;  {Zmodem - got a complete header}
+  ecNoHeader               = 9938;  {Zmodem - (internal) no header yet}
+
+  {APMODEM/OOMODEM status codes}
+  ecUnknownModemResult     = 9940;  {Unexpected char in modem result string}
+  ecConnect                = 9941;  {Modem response - CONNECT}
+  ecRing                   = 9942;  {Modem response - RING}
+  ecNoCarrier              = 9943;  {Modem response - NO CARRIER}
+  ecNoDialTone             = 9944;  {Modem response - NO DIALTONE}
+  ecBusy                   = 9945;  {Modem response - BUSY}
+  ecNoAnswer               = 9947;  {Modem response - NO ANSWER}
+  ecRinging                = 9948;  {Modem response - RINGING}
+  ecVoice                  = 9949;  {Modem response - VOICE}
+  ecError                  = 9950;  {Modem response - ERROR}
+
+  {APKERMIT/OOKERMIT status codes}
+  ecGotData                = 9954;  {Kermit - got packet}
+  ecNoData                 = 9955;  {Kermit - no data yet}
+
+  {Archive status messages}
+  ecUnknownMethod          = 9960;  {Unknown compression method}
+  ecFileEncrypted          = 9961;  {Cannot extract--file is encrypted}
+  ecBadFileCRC             = 9962;  {Bad CRC--file is probably corrupted}
+  ecCannotCreate           = 9963;  {Unable to create output file}
+  ecBadFileFormat          = 9964;  {Bad archive file format}
+  ecNotAnLzhFile           = 9965;  {Not an LZH file}
+  ecNotAZipFile            = 9966;  {Not a ZIP file}
+  ecEmptyFileMaskList      = 9967;  {File mask list is empty}
+
+  {FAX conversion error/warnings}
+  ecFaxBadFormat           = 9970;  {Not a valid APRO fax file}
+  ecFontNotSupported       = 9971;  {Bad font format or unsupported feature}
+  ecHPFontCvt              = 9972;  {Converting font}
+  ecBadGraphicsFormat      = 9973;  {Bad tiff/pcx format or unsupported feature}
+  ecBadEscapeSeq           = 9974;  {Bad escape sequence in PCL file}
+
+  {CaptureTerminalWindow error codes}
+  ecScrollBackTooBig       = 9980;  {Scroll back buffer > 64k}
+
+  {APBPLUS/OOBPLUS status codes}
+  ecResync                 = 9985;  {Resyncing with host}
+  ecWaitACK                = 9986;  {Waiting for ACK}
+  ecDropout                = 9987;  {Dropout}
+  ecHostCan                = 9988;  {Host cancel}
+  ecTryResume              = 9989;  {Attempting resume}
+  ecHostResume             = 9990;  {Host resuming}
+  ecResumeOK               = 9991;  {Resumed OK}
+  ecResumeBad              = 9992;  {Failed to resume}
+  ecUnPacket               = 9993;  {Invalid packet type}
+
+  {$IFDEF UseStreams}
+  {--- object type codes for streams ---}
+  otUartPort           = 400;
+  otInt14Port          = 401;
+  otFossilPort         = 402;
+  otDigi14Port         = 403;
+  otAbstractProtocol   = 410;
+  otXmodemProtocol     = 411;
+  otYmodemProtocol     = 412;
+  otZmodemProtocol     = 413;
+  otKermitProtocol     = 414;
+  otAsciiProtocol      = 415;
+  otBPlusProtocol      = 416;
+  otAbstractModem      = 420;
+  otHayesModem         = 421;
+  otCourierModem       = 422;
+  otMicrocomModem      = 423;
+  otNullModem          = 424;
+
+  otTerminalEmulator   = 440;
+  otAnsiEmulator       = 441;
+
+  otSmartVirtScreen    = 450;
+  otTerminalWindow     = 451;
+  otCaptureTerminalWindow = 452;
+
+  otAbstractFaxConverter = 460;
+  otTextFaxConverter     = 461;
+  otPcxFaxConverter      = 462;
+  otDcxFaxConverter      = 463;
+  otTiffFaxConverter     = 464;
+
+  otUnpackFax            = 470;
+  otUnpackToPcx          = 471;
+  otUnpackToDcx          = 472;
+
+  otAbstractFax          = 480;
+  otC12AbstractFax       = 481;
+  otC12SendFax           = 482;
+  otC12ReceiveFax        = 483;
+  otCasFax               = 484;
+
+  {--- object version codes for streams ---}
+  veUartPort           = 0;
+  veInt14Port          = 0;
+  veFossilPort         = 0;
+  veDigi14Port         = 0;
+  veAbstractProtocol   = 1;
+  veXmodemProtocol     = 1;
+  veYmodemProtocol     = 1;
+  veZmodemProtocol     = 1;
+  veKermitProtocol     = 0;
+  veAsciiProtocol      = 0;
+  veBPlusProtocol      = 0;
+  veAbstractModem      = 0;
+  veHayesModem         = 0;
+  veCourierModem       = 0;
+  veMicrocomModem      = 0;
+  veNullModem          = 0;
+
+  veTerminalEmulator   = 0;
+  veAnsiEmulator       = 0;
+
+  veSmartVirtScreen    = 0;
+  veTerminalWindow     = 0;
+  veCaptureTerminalWindow = 0;
+
+  veAbstractFaxConverter = 0;
+  veTextFaxConverter     = 0;
+  vePcxFaxConverter      = 0;
+  veDcxFaxConverter      = 0;
+  veTiffFaxConverter     = 0;
+
+  veUnpackFax            = 0;
+  veUnpackToPcx          = 0;
+  veUnpackToDcx          = 0;
+
+  veAbstractFax          = 0;
+  veC12AbstractFax       = 0;
+  veC12SendFax           = 0;
+  veC12ReceiveFax        = 0;
+  veCasFax               = 0;
+
+  {--- pointer codes for streams ---}
+  ptErrorProc         = 400;   {User supplied port error procedure}
+  ptAbortProc         = 401;   {User supplied port abort procedure}
+  ptNoErrorProc       = 402;   {Default error procedure for ports}
+  ptNoAbortFunc       = 403;   {Default abort procedure for ports}
+  ptWaitCharProc      = 404;   {User supplied port waitchar procedure}
+  ptNoWaitCharProc    = 405;   {Default waitchar procedure for ports}
+
+  ptUserStatus        = 410;   {User supplied protocol status procedure}
+  ptNextFile          = 411;   {User supplied next file procedure}
+  ptLogFile           = 412;   {User supplied log file procedure}
+  ptAcceptFile        = 414;   {User supplied accept file procedure}
+  ptNoUserStatus      = 415;   {Default status procedure}
+  ptNextFileMask      = 416;   {Default next file procedure}
+  ptNoLogFile         = 417;   {Default log file procedure}
+  ptNoAcceptFile      = 418;   {Default accept file procedure}
+  ptPortPtr           = 419;   {AbstractPortPtr code}
+  ptUserBack          = 420;   {User supplied protocol background proc}
+  ptNoUserBack        = 421;   {Default userback procedure for protocols}
+  ptNoHandleResume    = 422;   {Default handle resume procedure for BPlus}
+  {$ENDIF}
+
+{$IFNDEF CompilingImport}
+var
+  AsyncStatus : Word;      {holds errors for async code}
+var
+  ArchiveStatus : Word;    {holds errors for archive code}
+{$ENDIF}
+
+const
+  {The following table is used internally only. It is interfaced so
+   that other programmers can use them with their own CRC routines}
+
+  CrcTable: array[0..255] of Word = (
+    $0000,  $1021,  $2042,  $3063,  $4084,  $50a5,  $60c6,  $70e7,
+    $8108,  $9129,  $a14a,  $b16b,  $c18c,  $d1ad,  $e1ce,  $f1ef,
+    $1231,  $0210,  $3273,  $2252,  $52b5,  $4294,  $72f7,  $62d6,
+    $9339,  $8318,  $b37b,  $a35a,  $d3bd,  $c39c,  $f3ff,  $e3de,
+    $2462,  $3443,  $0420,  $1401,  $64e6,  $74c7,  $44a4,  $5485,
+    $a56a,  $b54b,  $8528,  $9509,  $e5ee,  $f5cf,  $c5ac,  $d58d,
+    $3653,  $2672,  $1611,  $0630,  $76d7,  $66f6,  $5695,  $46b4,
+    $b75b,  $a77a,  $9719,  $8738,  $f7df,  $e7fe,  $d79d,  $c7bc,
+    $48c4,  $58e5,  $6886,  $78a7,  $0840,  $1861,  $2802,  $3823,
+    $c9cc,  $d9ed,  $e98e,  $f9af,  $8948,  $9969,  $a90a,  $b92b,
+    $5af5,  $4ad4,  $7ab7,  $6a96,  $1a71,  $0a50,  $3a33,  $2a12,
+    $dbfd,  $cbdc,  $fbbf,  $eb9e,  $9b79,  $8b58,  $bb3b,  $ab1a,
+    $6ca6,  $7c87,  $4ce4,  $5cc5,  $2c22,  $3c03,  $0c60,  $1c41,
+    $edae,  $fd8f,  $cdec,  $ddcd,  $ad2a,  $bd0b,  $8d68,  $9d49,
+    $7e97,  $6eb6,  $5ed5,  $4ef4,  $3e13,  $2e32,  $1e51,  $0e70,
+    $ff9f,  $efbe,  $dfdd,  $cffc,  $bf1b,  $af3a,  $9f59,  $8f78,
+    $9188,  $81a9,  $b1ca,  $a1eb,  $d10c,  $c12d,  $f14e,  $e16f,
+    $1080,  $00a1,  $30c2,  $20e3,  $5004,  $4025,  $7046,  $6067,
+    $83b9,  $9398,  $a3fb,  $b3da,  $c33d,  $d31c,  $e37f,  $f35e,
+    $02b1,  $1290,  $22f3,  $32d2,  $4235,  $5214,  $6277,  $7256,
+    $b5ea,  $a5cb,  $95a8,  $8589,  $f56e,  $e54f,  $d52c,  $c50d,
+    $34e2,  $24c3,  $14a0,  $0481,  $7466,  $6447,  $5424,  $4405,
+    $a7db,  $b7fa,  $8799,  $97b8,  $e75f,  $f77e,  $c71d,  $d73c,
+    $26d3,  $36f2,  $0691,  $16b0,  $6657,  $7676,  $4615,  $5634,
+    $d94c,  $c96d,  $f90e,  $e92f,  $99c8,  $89e9,  $b98a,  $a9ab,
+    $5844,  $4865,  $7806,  $6827,  $18c0,  $08e1,  $3882,  $28a3,
+    $cb7d,  $db5c,  $eb3f,  $fb1e,  $8bf9,  $9bd8,  $abbb,  $bb9a,
+    $4a75,  $5a54,  $6a37,  $7a16,  $0af1,  $1ad0,  $2ab3,  $3a92,
+    $fd2e,  $ed0f,  $dd6c,  $cd4d,  $bdaa,  $ad8b,  $9de8,  $8dc9,
+    $7c26,  $6c07,  $5c64,  $4c45,  $3ca2,  $2c83,  $1ce0,  $0cc1,
+    $ef1f,  $ff3e,  $cf5d,  $df7c,  $af9b,  $bfba,  $8fd9,  $9ff8,
+    $6e17,  $7e36,  $4e55,  $5e74,  $2e93,  $3eb2,  $0ed1,  $1ef0
+  );
+
+{$IFDEF UsePmodeDLL}
+
+function StatusStr(Code : Word) : String; Export;
+function UpdateChecksum(CurByte : Byte; CheckSum : Word) : Word; Export;
+function UpdateCrc(CurByte : Byte; CurCrc : Word) : Word; Export;
+function UpdateCrcKermit(CurByte : Byte; CurCrc : Word) : Word; Export;
+
+{$IFDEF DPMI}
+function GlobalAllocCheck(var P; Flags : Word; Size : LongInt) : Boolean; Export;
+procedure GlobalFreeCheck(var P); Export;
+{$ENDIF}
+
+{$IFDEF Standalone}
+function GetMemCheck(var P; Bytes : Word) : Boolean; Export;
+procedure FreeMemCheck(var P; Bytes : Word); Export;
+
+function IsLeapYear(Year : Integer) : Boolean; Export;
+function DaysInMonth(Month, Year : Integer) : Integer;
+Export;
+function ValidDate(Day, Month, Year : Integer) : Boolean; Export;
+function DMYtoDate(Day, Month, Year : Integer) : Date; Export;
+procedure DateToDMY(Julian : Date; var Day, Month, Year : Integer); Export;
+procedure DateTimeDiff(DT1, DT2 : DateTimeRec; var Days : Word; var Secs : LongInt); Export;
+procedure TimeToHMS(T : Time; var Hours, Minutes, Seconds : Byte); Export;
+function HMStoTime(Hours, Minutes, Seconds : Byte) : Time; Export;
+procedure IncDateTime(var DT1, DT2 : DateTimeRec; Days : Integer; Secs : LongInt); Export;
+function StUpcase(S : string) : string; Export;
+function PadCh(S : string; Ch : Char; Len : Byte) : String; Export;
+{$IFDEF VirtualPascal}
+function Search(const Buffer; BufLength : Word;
+                const Match; MatLength : Word) : Word; Export;
+{$else }
+function Search(var Buffer; BufLength : Word;
+                var Match; MatLength : Word) : Word; Export;
+{$ENDIF }
+function AddBackSlash(DirName : string) : String; Export;
+function JustPathname(PathName : string) : String; Export;
+function DefaultExtension(Name : string; Ext : ExtStr) : String; Export;
+function HexW(W : Word) : String; Export;
+function HexL(L : LongInt) : String; Export;
+function JustFilename(PathName : String) : String; Export;
+function ExistFile(FName : String) : Boolean; Export;
+function StringToHeap(S : String) : StringPtr; Export;
+procedure DisposeString(P : StringPtr); Export;
+{$ENDIF}
+
+function CheckRange(Value, Low, High : Word) : Boolean; Export;
+
+function GetAsyncStatus : Word; Export;
+procedure SetAsyncStatus(Status : Word); Export;
+function GetArchiveStatus : Word; Export;
+procedure SetArchiveStatus(Status : Word); Export;
+
+{$else}
+
+function StatusStr(Code : Word) : String;
+function UpdateChecksum(CurByte : Byte; CheckSum : Word) : Word;
+function UpdateCrc(CurByte : Byte; CurCrc : Word) : Word;
+function UpdateCrcKermit(CurByte : Byte; CurCrc : Word) : Word;
+
+{$IFDEF DPMI}
+function GlobalAllocCheck(var P; Flags : Word; Size : LongInt) : Boolean;
+procedure GlobalFreeCheck(var P);
+{$ENDIF}
+
+{$IFDEF Standalone}
+function GetMemCheck(var P; Bytes : Word) : Boolean;
+procedure FreeMemCheck(var P; Bytes : Word);
+
+function IsLeapYear(Year : Integer) : Boolean;
+function DaysInMonth(Month, Year : Integer) : Integer;
+function ValidDate(Day, Month, Year : Integer) : Boolean;
+function DMYtoDate(Day, Month, Year : Integer) : Date;
+procedure DateToDMY(Julian : Date; var Day, Month, Year : Integer);
+procedure DateTimeDiff(DT1, DT2 : DateTimeRec; var Days : Word; var Secs : LongInt);
+procedure TimeToHMS(T : Time; var Hours, Minutes, Seconds : Byte);
+function HMStoTime(Hours, Minutes, Seconds : Byte) : Time;
+procedure IncDateTime(var DT1, DT2 : DateTimeRec; Days : Integer; Secs : LongInt);
+function StUpcase(S : String) : String;
+function PadCh(S : string; Ch : Char; Len : Byte) : String;
+{$IFDEF VirtualPascal}
+function Search(const Buffer; BufLength : System. Word;
+                const Match; MatLength : System. Word) : Word;
+{$else }
+function Search(var Buffer; BufLength : Word;
+                var Match; MatLength : Word) : Word;
+{$ENDIF }
+function AddBackSlash(DirName : string) : String;
+function JustPathname(PathName : string) : String;
+function DefaultExtension(Name : string; Ext : ExtStr) : String;
+function HexW(W : Word) : String;
+function HexL(L : LongInt) : String;
+function JustFilename(PathName : String) : String;
+function ExistFile(FName : String) : Boolean;
+function StringToHeap(S : String) : StringPtr;
+procedure DisposeString(P : StringPtr);
+{$ENDIF}
+
+function CheckRange(Value, Low, High : Word) : Boolean;
+
+function GetAsyncStatus : Word;
+procedure SetAsyncStatus(Status : Word);
+function GetArchiveStatus : Word;
+procedure SetArchiveStatus(Status : Word);
+
+{$ENDIF}
+
+const
+  Crc32Table : array[0..255] of LongInt = (
+  $00000000, $77073096, $ee0e612c, $990951ba, $076dc419, $706af48f, $e963a535,
+  $9e6495a3, $0edb8832, $79dcb8a4, $e0d5e91e, $97d2d988, $09b64c2b, $7eb17cbd,
+  $e7b82d07, $90bf1d91, $1db71064, $6ab020f2, $f3b97148, $84be41de, $1adad47d,
+  $6ddde4eb, $f4d4b551, $83d385c7, $136c9856, $646ba8c0, $fd62f97a, $8a65c9ec,
+  $14015c4f, $63066cd9, $fa0f3d63, $8d080df5, $3b6e20c8, $4c69105e, $d56041e4,
+  $a2677172, $3c03e4d1, $4b04d447, $d20d85fd, $a50ab56b, $35b5a8fa, $42b2986c,
+  $dbbbc9d6, $acbcf940, $32d86ce3, $45df5c75, $dcd60dcf, $abd13d59, $26d930ac,
+  $51de003a, $c8d75180, $bfd06116, $21b4f4b5, $56b3c423, $cfba9599, $b8bda50f,
+  $2802b89e, $5f058808, $c60cd9b2, $b10be924, $2f6f7c87, $58684c11, $c1611dab,
+  $b6662d3d, $76dc4190, $01db7106, $98d220bc, $efd5102a, $71b18589, $06b6b51f,
+  $9fbfe4a5, $e8b8d433, $7807c9a2, $0f00f934, $9609a88e, $e10e9818, $7f6a0dbb,
+  $086d3d2d, $91646c97, $e6635c01, $6b6b51f4, $1c6c6162, $856530d8, $f262004e,
+  $6c0695ed, $1b01a57b, $8208f4c1, $f50fc457, $65b0d9c6, $12b7e950, $8bbeb8ea,
+  $fcb9887c, $62dd1ddf, $15da2d49, $8cd37cf3, $fbd44c65, $4db26158, $3ab551ce,
+  $a3bc0074, $d4bb30e2, $4adfa541, $3dd895d7, $a4d1c46d, $d3d6f4fb, $4369e96a,
+  $346ed9fc, $ad678846, $da60b8d0, $44042d73, $33031de5, $aa0a4c5f, $dd0d7cc9,
+  $5005713c, $270241aa, $be0b1010, $c90c2086, $5768b525, $206f85b3, $b966d409,
+  $ce61e49f, $5edef90e, $29d9c998, $b0d09822, $c7d7a8b4, $59b33d17, $2eb40d81,
+  $b7bd5c3b, $c0ba6cad, $edb88320, $9abfb3b6, $03b6e20c, $74b1d29a, $ead54739,
+  $9dd277af, $04db2615, $73dc1683, $e3630b12, $94643b84, $0d6d6a3e, $7a6a5aa8,
+  $e40ecf0b, $9309ff9d, $0a00ae27, $7d079eb1, $f00f9344, $8708a3d2, $1e01f268,
+  $6906c2fe, $f762575d, $806567cb, $196c3671, $6e6b06e7, $fed41b76, $89d32be0,
+  $10da7a5a, $67dd4acc, $f9b9df6f, $8ebeeff9, $17b7be43, $60b08ed5, $d6d6a3e8,
+  $a1d1937e, $38d8c2c4, $4fdff252, $d1bb67f1, $a6bc5767, $3fb506dd, $48b2364b,
+  $d80d2bda, $af0a1b4c, $36034af6, $41047a60, $df60efc3, $a867df55, $316e8eef,
+  $4669be79, $cb61b38c, $bc66831a, $256fd2a0, $5268e236, $cc0c7795, $bb0b4703,
+  $220216b9, $5505262f, $c5ba3bbe, $b2bd0b28, $2bb45a92, $5cb36a04, $c2d7ffa7,
+  $b5d0cf31, $2cd99e8b, $5bdeae1d, $9b64c2b0, $ec63f226, $756aa39c, $026d930a,
+  $9c0906a9, $eb0e363f, $72076785, $05005713, $95bf4a82, $e2b87a14, $7bb12bae,
+  $0cb61b38, $92d28e9b, $e5d5be0d, $7cdcefb7, $0bdbdf21, $86d3d2d4, $f1d4e242,
+  $68ddb3f8, $1fda836e, $81be16cd, $f6b9265b, $6fb077e1, $18b74777, $88085ae6,
+  $ff0f6a70, $66063bca, $11010b5c, $8f659eff, $f862ae69, $616bffd3, $166ccf45,
+  $a00ae278, $d70dd2ee, $4e048354, $3903b3c2, $a7672661, $d06016f7, $4969474d,
+  $3e6e77db, $aed16a4a, $d9d65adc, $40df0b66, $37d83bf0, $a9bcae53, $debb9ec5,
+  $47b2cf7f, $30b5ffe9, $bdbdf21c, $cabac28a, $53b39330, $24b4a3a6, $bad03605,
+  $cdd70693, $54de5729, $23d967bf, $b3667a2e, $c4614ab8, $5d681b02, $2a6f2b94,
+  $b40bbe37, $c30c8ea1, $5a05df1b, $2d02ef8d
+  );
+
+var
+  Crc32TableOfs : Word;
+
+function UpdateCrc32(CurByte : Byte; CurCrc : LongInt) : LongInt;
+{$IFNDEF VirtualPascal}
+  {-Returns an updated crc32}
+
+  (* Model for inline code below
+  UpdateCrc32 := Crc32Table[Byte(CurCrc xor LongInt(CurByte))] xor
+                 ((CurCrc shr 8) and $00FFFFFF);
+  *)
+
+inline(
+                         {;Get args -- DX:BX = CurCrc, CX = CurByte;}
+  $5B/                   {        POP     BX}
+  $5A/                   {        POP     DX}
+  $59/                   {        POP     CX}
+  $52/                   {        PUSH    DX}
+  $53/                   {        PUSH    BX      ;Save original CurCrc}
+                         {;CX:AX := Get Crc32Table[CurCrc xor CurByte];}
+  $31/$CB/               {        XOR     BX,CX   ;DX:BX = CurCrc xor CurByte}
+  $30/$FF/               {        XOR     BH,BH   ;Byte(DX:BX)}
+  $D1/$E3/               {        SHL     BX,1    ;LongInt index}
+  $D1/$E3/               {        SHL     BX,1}
+  $03/$1E/>CRC32TABLEOFS/{        ADD     BX,[>Crc32TableOfs]}
+  $8B/$07/               {        MOV     AX,[BX]}
+  $8B/$4F/$02/           {        MOV     CX,[BX+2]}
+                         {;DX:BX := (CurCrc shr 8) and $00FFFFFF;}
+  $5B/                   {        POP     BX      ;Get original CurCrc}
+  $5A/                   {        POP     DX}
+  $51/                   {        PUSH    CX      ;Save CX}
+  $B9/$08/$00/           {        MOV     CX,8    ;Shift 8 bits}
+  $D1/$EA/               {C1:     SHR     DX,1    ;Hi reg into carry}
+  $D1/$DB/               {        RCR     BX,1    ;Carry into lo reg}
+  $E2/$FA/               {        LOOP    C1      ; for 8 bits}
+  $81/$E2/$FF/$00/       {        AND     DX,$00FF}
+                         {;DX:AX := ES:AX xor DX:BX (sets function result)}
+  $59/                   {        POP     CX}
+  $31/$D8/               {        XOR     AX,BX}
+  $89/$CB/               {        MOV     BX,CX}
+  $31/$DA);              {        XOR     DX,BX}
+{$ENDIF - VirtualPascal}
+
+{$IFDEF Standalone}
+{$IFDEF VirtualPascal}
+procedure SetFlag(var MyFlags : Word; MyFlagMask : Word); inline;
+  begin
+    MyFlags:=MyFlags OR MyFlagMask
+  end;
+procedure ClearFlag(var MyFlags : Word; MyFlagMask : Word); inline;
+  begin
+    MyFlags:=MyFlags AND NOT MyFlagMask
+  end;
+function FlagIsSet(MyFlags, MyFlagMask : Word) : Boolean; inline;
+  begin
+    FlagIsSet:=(MyFlags AND MyFlagMask<>0)
+  end;
+function MinWord(A, B : Word) : Word; inline;
+  begin
+    IF A<B then MinWord:=A else MinWord:=B
+  end;
+{$else - Borland Pascal }
+procedure SetFlag(var Flags : Word; FlagMask : Word);
+  {-Set the bit(s) specified by FlagMask in Flags}
+  inline(
+    $58/                     {pop ax        ;FlagMask into AX}
+    $5F/                     {pop di}
+    $07/                     {pop es        ;ES:DI => Flags}
+    $26/$09/$05);            {or es:[di],ax ;Flags := Flags or FlagMask}
+
+procedure ClearFlag(var Flags : Word; FlagMask : Word);
+  {-Clear the bit(s) specified by FlagMask in Flags}
+  inline(
+    $58/                     {pop ax         ;FlagMask into AX}
+    $5F/                     {pop di}
+    $07/                     {pop es         ;ES:DI => Flags}
+    $F7/$D0/                 {not ax         ;FlagMask := not FlagMask}
+    $26/$21/$05);            {and es:[di],ax ;Flags := Flags and not FlagMask}
+
+function FlagIsSet(Flags, FlagMask : Word) : Boolean;
+  {-Returns True if the bit specified by FlagMask is set in Flags}
+  inline(
+    $5A/                     {pop dx    ;FlagMask into DX}
+    $58/                     {pop ax    ;Flags into AX}
+    $21/$D0/                 {and ax,dx ;Mask out everything not in FlagMask}
+    $74/$02/                 {jz  Exit}
+    $B0/$01);                {mov al,1  ;AL = Ord(True)}
+                             {Exit:}
+
+function MinWord(A, B : Word) : Word;
+  {-Returns the smaller of A and B}
+  inline(
+    $58/                     {pop ax}
+    $5B/                     {pop bx}
+    $39/$C3/                 {cmp bx,ax}
+    $73/$02/                 {jae done}
+    $89/$D8);                {mov ax,bx}
+                             {done:}
+{$ENDIF - Borland/Virtual Pascal }
+{$ENDIF}
+
+{$IFDEF VirtualPascal}
+function MakeLongInt(H, L : Word) : LongInt; inline;
+  begin
+    MakeLongInt:=(H SHL 16) OR L
+  end;
+function AddWordToPtr(P : Pointer; W : Word) : Pointer; inline;
+  begin
+    AddWordToPtr:=POINTER(LONGINT(P)+W)
+  end;
+procedure DecPtr(var P; Size : Word); inline;
+  begin
+    DEC(LONGINT(P),Size)
+  end;
+procedure IncPtr(var P; Size : Word); inline;
+  begin
+    INC(LONGINT(P),Size)
+  end;
+{$ELSE - Borland Pascal }
+function MakeLongInt(H, L : Word) : LongInt;
+  {-Constructs a LongInt from two Words}
+  inline(
+    $58/                     {pop ax  ;low word into AX}
+    $5A);                    {pop dx  ;high word into DX}
+
+function AddWordToPtr(P : Pointer; W : Word) : Pointer;
+  {-Add a Word to a pointer. No normalization or wrap checking performed}
+  inline(
+    $5B/                     {pop bx     ;bx = W}
+    $58/                     {pop ax     ;ax = Ofs(P^)}
+    $5A/                     {pop dx     ;dx = Seg(P^)}
+    $01/$D8);                {add ax,bx  ;ax = Ofs(P^)+W}
+
+{!!.01}
+procedure DecPtr(var P; Size : Word);
+  {-Reduce a pointer value by Size bytes, Dec(P)}
+  inline(
+    $58/                {pop ax            ;ax = Size}
+    $5F/                {pop di            ;di = Ofs(P)}
+    $07/                {pop es            ;es = Seg(P)}
+    $26/$29/$05);       {sub es:[di], ax   ;P = P - Size}
+
+{!!.01}
+procedure IncPtr(var P; Size : Word);
+  {-Increase a pointer value by Size bytes, Inc(P)}
+  inline(
+    $58/                {pop ax            ;ax = Size}
+    $5F/                {pop di            ;di = Ofs(P)}
+    $07/                {pop es            ;es = Seg(P)}
+    $26/$01/$05);       {add es:[di], ax   ;P = P + Size}
+{$ENDIF - Borland/Virtual Pascal }
+

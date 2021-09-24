@@ -1,0 +1,1612 @@
+ {--------File Implode ------------------------------------}
+
+const
+  DefBufferSize    = 4096;                        { $1000}
+  MaxWinBits       = 13;
+  WindowSize       = (1 shl MaxWinBits);          { $2000 8192}
+
+  HashBits         = 14;
+  HashSize         = 1 shl HashBits;              { $4000 16384}
+  HashMask         = HashSize - 1;                { $3FFF 16383}
+
+  MaxTrees         = 5;                           {Maximum number of trees}
+
+  MaxDistance      = WindowSize + DefBufferSize;  { $3000 12288}
+  HashChainTail    = MaxDistance;                 { $3000 12288}
+
+  MatchBufSize     = 512;                         {512 StrMatchRecs}
+
+  BitSBufSize      = 16;  {Number of bits used within BitStringBuf}
+
+  TempBufSize      = $E000;                       {57334}
+  TempFileOpen     : Boolean = False;
+
+type
+  TreeMethod       = (TwoTrees, ThreeTrees);
+
+  {Data structure describing a single value and its code string}
+  CodeTreeRecPtr   = ^CodeTreeRec;
+  CodeTreeRec      = record
+    Frequency      : LongInt;          {Frequency count}
+    Code           : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};        {Bit string}
+    CodeLen        : Byte;             {Length of bit string}
+    Value          : Byte;             {Source value}
+  end;
+
+  CodeTreeRecArray = array[0..256] of CodeTreeRec;
+  CodeTreeRecArrayPtr = ^CodeTreeRecArray;
+
+  {Header for a code tree}
+  CodeTreeHeader   = record
+    CTArray        : CodeTreeRecArrayPtr;  {Array of Code trees}
+    CTSize         : {$IFDEF VirtualPascal} SmallInt {$ELSE} Integer {$ENDIF};             {Number of entries in tree}
+  end;
+
+  {Data structure for string matches}
+  StrMatchRec      = record
+    Position       : {$IFDEF VirtualPascal} SmallInt {$ELSE} Integer {$ENDIF};             {Position into buffer}
+    case Byte of
+      0 : (Length  : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF});           {Length of matched string}
+      1 : (Literal : array[0..1] of Byte); {Literal matched characters}
+  end;
+
+  StrMatchRecArray = array[0..MatchBufSize] of StrMatchRec;
+  StrMatchRecArrayPtr = ^StrMatchRecArray;
+
+  {Data structure for re-sorting source values by bit string length}
+  CodeTreeResortRec = record
+    CTRLength      : Byte;             {Length of bit string}
+    CTRValue       : Byte;             {Source value}
+  end;
+  ResortBufArray   = array[0..255] of CodeTreeResortRec;
+  ResortBufPtr     = ^ResortBufArray;
+
+  {Used to type cast}
+  WordArray        = array[0..65535 div SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF})-1] of
+                     {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};
+  WordArrayPtr     = ^WordArray;
+
+  WordPtr          = {$IFDEF VirtualPascal} ^SmallWord {$ELSE} ^Word {$ENDIF};
+  LongPtr          = ^LongInt;
+
+  {Used for frequency tables}
+  LongArray64      = array[0..63] of LongInt;
+  LongArray64Ptr   = ^LongArray64;
+  LongArray256     = array[0..255] of LongInt;
+  LongArray256Ptr  = ^LongArray256;
+
+var
+  ImpBufferSize    : Word;             {Size of sliding dictionary}
+  ImpStringSize    : Word;             {Size of maximum string match length}
+  ImpCompSize      : LongInt;          {Compression size of Implosion method}
+  ImpBits          : Word;
+  ImpMethod        : TreeMethod;       {Type of compression}
+  ImpHashIndex     : Word;             {Current hash index}
+  HashShift        : Word;             {Shift count for current hash index}
+  InsertPoint      : Integer;          {Position of ImpNext input buffer}
+  MatchLength      : Integer;          {Length of current best match}
+  ImpMinMatchLen   : Integer;          {Minimum matching length}
+  StrSize          : Integer;          {Length of string to insert}
+  StrStart         : Integer;          {Start of string to insert}
+  CheckPoint       : Integer;          {Start for new match at this point}
+  MaxChainLen      : Integer;          {Copy of MaxChainLength to modify}
+  MatchBufCur      : Integer;          {Pointer to the most recent match}
+  StartLength      : Integer;
+  CodeTreeTable    : array[0..MaxTrees-1] of CodeTreeHeader;
+
+  {Total number of source values from Pass One}
+  LitCharNum       : LongInt;          {total number of literal chars}
+  LitChar2Num      : LongInt;          {total number of of 2-char matches}
+  StrMatchesNum    : LongInt;          {total number of of string matches}
+
+  {Source value frequencies for the five trees}
+  LitCharFreq      : LongArray256Ptr;  {literal character freqs}
+  Length2Freq      : LongArray64Ptr;   {length freqs}
+  Length3Freq      : LongArray64Ptr;   {length freqs}
+  Distance2Freq    : LongArray64Ptr;   {distance freqs}
+  Distance3Freq    : LongArray64Ptr;   {distance freqs}
+
+  {Number of bits saved by using each of five the trees}
+  LitCharSaved     : LongInt;          {literal tree}
+  Length2Saved     : LongInt;          {length tree}
+  Length3Saved     : LongInt;          {length tree}
+  Distance2Saved   : LongInt;          {distance tree}
+  Distance3Saved   : LongInt;          {distance tree}
+
+  {Buffer for code tree generation}
+  CTBuffer         : array[0..256] of Byte;
+
+  {Handles for the code trees to be used}
+  LitCharTree      : Integer;          {temp literal tree}
+  Length2Tree      : Integer;          {temp length tree}
+  Length3Tree      : Integer;          {temp length tree}
+  Distance2Tree    : Integer;          {temp distance tree}
+  Distance3Tree    : Integer;          {temp distance tree}
+  ImpLitTree       : Integer;          {literal tree, -1 if none}
+  ImpLenTree       : Integer;          {length tree}
+  ImpDstTree       : Integer;          {distance tree}
+
+  {Variables for bit string routines}
+  BitStringBuf     : Word;             {Bit string output buffer}
+  BitSValid        : Byte;             {Number of valid bits}          {!!.01}
+
+  {Variables for 2nd pass temporary buffer routines}
+  TBuf             : ByteArrayPtr;     {Allocated buffer, used first}
+  TPos             : Word;             {Position in temp buffer}
+  TMem             : Word;             {Portion of buffer in memory}
+  TFile            : file;             {File for temporary storage}
+
+  {Variables for sorting the code tree}
+  ResortBuf        : ResortBufPtr;
+  MatchBuf         : StrMatchRecArrayPtr;
+
+  ImpNext          : WordArrayPtr;
+  ImpPrev          : WordArrayPtr;
+  ImpWindow        : ByteArrayPtr;
+
+  {Variables used for progress routine}
+  TotalBytesRead   : LongInt;
+  TotalBytesToRead : LongInt;
+
+
+  procedure CodeTreeAlloc(Size: Integer; var Handle: Integer);
+    {-Allocate code table of size Size and return Handle}
+  var
+    CT        : CodeTreeRecArrayPtr;
+    J         : Integer;
+  begin
+    {Find an available code tree handle.}
+    Handle := 0;
+    while (Handle < MaxTrees) and (CodeTreeTable[Handle].CTArray <> nil) do
+      Inc(Handle);
+    if (Handle >= MaxTrees) then Exit;
+
+    CodeTreeTable[Handle].CTSize := Size;
+
+    {Allocate space for the code tree}
+    if not GetMemCheck(CT, Size * SizeOf(CodeTreeRec)) then begin
+      ArchiveStatus := epFatal + ecOutOfMemory;
+      Exit;
+    end;
+
+    {Initialize the code tree}
+    FillChar(CT^, Size * SizeOf(CodeTreeRec), #0);
+    for J := 0 to Size-1 do
+        CT^[J].Value := J;
+
+    CodeTreeTable[Handle].CTArray := CT;
+  end;  {CodeTreeAlloc}
+
+  procedure SetMinMatchLength(var B; Size: Word);
+    {-Set minimum match length based on presence of ASCII characters if
+      the file is larger than 500 bytes, otherwise, default to ascii
+      method. Called once per file.}
+  var
+    I              : Integer;
+    Buf            : ByteArray absolute B;
+    NonTextCount   : Integer;
+  begin
+    ImpMinMatchLen := 3;  {Default ascii}
+    NonTextCount := 0;
+    if Size > 500 then begin
+    {Check the first few characters for non-text}
+      for I := 0 to 500 do
+        if (Buf[I] > 127) or (Buf[I] < 7) then
+          Inc(NonTextCount);
+      {if 20% or more is non text then assume binary}
+      if NonTextCount >= 100 then begin
+        ImpMinMatchLen := 2;
+        MaxChainLen := MaxChainLength shr 2;
+      end;
+    end;
+    HashShift := (HashBits + ImpMinMatchLen -1) div ImpMinMatchLen;
+  end;
+
+  procedure CodeTreeTally(SM: Word);
+  var
+    Dist           : Integer;
+    I              : Integer;
+  begin
+    Dist := MatchBuf^[SM].Position;
+    {Tally up the latest data}
+    if (Dist = 0) then begin           {Literal character}
+      Inc(LitCharNum);
+      I := MatchBuf^[SM].Literal[0];
+      Inc(LitCharFreq^[I]);
+    end else if (Dist < 0) then begin  {2-character match}
+      Inc(LitChar2Num);
+
+      I := MatchBuf^[SM].Literal[0];
+      Inc(LitCharFreq^[I]);
+
+      I := MatchBuf^[SM].Literal[1];
+      Inc(LitCharFreq^[I]);
+
+      I := ((-Dist-1) shr ImpBits) and $3F;
+      Inc(Distance2Freq^[I]);
+
+      Inc(Length2Freq^[0]);
+    end else begin                     {3-char or longer match}
+      Inc(StrMatchesNum);
+      I := ((Dist-1) shr ImpBits) And $3F;
+      Inc(Distance3Freq^[I]);
+
+      {Defer update of Distance2Freq and Length2Freq until making the trees}
+      I := MatchBuf^[SM].Length - 3;
+      if (I > 63) then
+        I := 63;
+      Inc(Length3Freq^[I]);
+    end;
+  end;  {CodeTreeTally}
+
+  function TempWrite(Buf: ByteArrayPtr; Bytes: Word): Word;
+    {-Write Buf to memory or disk for temporary storage}
+  var
+    I              : Word;
+    P              : Word;
+    Result         : Word;
+  begin
+    TempWrite := 0;
+    P := 0;
+
+    {Write to memory}
+    I := TempBufSize - TPos;
+    if (I > 0) and (Bytes > 0) then begin
+      if I > Bytes then
+        I := Bytes;
+      Move(Buf^[0], TBuf^[TPos], I);
+      Inc(TPos, I);
+      if (TMem < TPos) then
+        TMem := TPos;
+      Inc(P, I);
+      Dec(Bytes, I);
+    end;
+
+    if Bytes > 0 then begin
+
+      {create temporary file if needed}
+      if not TempFileOpen then begin
+        Assign(TFile, '{TPS}.$$$');
+        ReWrite(TFile, SizeOf(Byte));
+        ArchiveStatus := IoResult;
+        if ArchiveStatus <> ecOk then Exit;
+        TempFileOpen := True;
+      end;
+
+      {Write to temporary file}
+      BlockWrite(TFile, Buf^[P], Bytes, Result);
+      ArchiveStatus := IoResult;
+      if Result <> Bytes then
+        ArchiveStatus := ecDiskFull;
+      if ArchiveStatus <> ecOk then Exit;
+      Inc(P, Result);
+    end;
+
+    {Increment total by P}
+    if ShowProg then
+      Inc(TotalBytesToRead, P);
+
+    TempWrite := P;
+  end;  {TempWrite}
+
+  function TempRead(Buf: ByteArrayPtr; Bytes: Word): Word;
+    {-Read from temporary storage buffer (mem or file)}
+  var
+    I         : Word;                  {Bytes in memory, items to read}
+    P         : Word;
+    R         : Word;                  {bytes read from file}
+  begin
+    TempRead := 0;
+    P := 0;
+
+    {Read from memory first}
+    I := TMem - TPos;
+    if ((I > 0) and (Bytes > 0)) then begin
+      if (I > Bytes) then
+        I := Bytes;
+      Move(TBuf^[TPos], Buf^[0], I);
+      Inc(TPos, I);
+      Inc(P, I);
+      Dec(Bytes, I);
+    end;
+
+    {Read from file if more requested}
+    if (Bytes > 0) and (TempFileOpen) then begin
+      BlockRead(TFile, Buf^[P], Bytes, R);
+      ArchiveStatus := IoResult;
+      if ArchiveStatus <> ecOk then Exit;
+      Inc(P, R);
+    end;
+
+    if ShowProg then begin
+      {Increment total read}
+      Inc(TotalBytesRead, P);
+      if not glSPF(TotalBytesRead, TotalBytesToRead) then
+        ArchiveStatus := ecUserAbort;
+    end;
+
+    {Return records read from file or buffer}
+    TempRead := P div SizeOf(StrMatchRec);
+  end;  {TempRead}
+
+  procedure WriteMatch(MaStart: Word; MaLength: Integer);
+    {-Write the current match to the file}
+  var
+    MaDist    : Integer;               {Distance of current match}
+  begin
+    MaDist := 0;
+    if (MaLength > StrSize) then
+      MaLength := StrSize;
+
+    if (MaLength > 1) then begin
+      MaDist := StrStart - MaStart;
+      if (MaDist < 0) then
+        Inc(MaDist, MaxDistance);
+      if MaDist = 1 then begin
+        {Keep the previous match if it was delayed}
+        if (StartLength > 1) then begin
+          MaLength := 1;
+        end else begin
+          {Truncate the match to 1}
+          WriteMatch(MaStart, 1);
+          Inc(StrStart);
+          CheckPoint := StrStart;
+          WriteMatch(MaStart, MaLength-1);
+          Dec(StrStart);
+          Exit;                        {Leave checkpoint unchanged}
+        end;
+      end;
+    end;
+
+    {If the previous match has been delayed, keep it or use the current match}
+    if StartLength > 1 then begin
+      {Keep the previous match if it is not shorter than the current one.}
+      {Otherwise, emit only the first byte of the previous match,}
+      {followed by the current match. If we have a delayed match for}
+      {the last bytes of the input file, the next match will necessarily}
+      {be smaller, so CodeTreeTally will correctly be called for the delayed}
+      {match.}
+      if StartLength >= MaLength then begin   {Keep the previous match}
+        if StartLength = 2 then begin
+          MatchBuf^[MatchBufCur].Position :=
+              - MatchBuf^[MatchBufCur].Position;
+          MatchBuf^[MatchBufCur].Literal[1] := ImpWindow^[StrStart];
+        end else begin
+          MatchBuf^[MatchBufCur].Length := StartLength;
+        end;
+        CheckPoint := StrStart + StartLength -1;
+        StartLength := 1;
+        CodeTreeTally(MatchBufCur);
+        Exit;
+      end;
+      {Shorten the previous match to zero}
+      MatchBuf^[MatchBufCur].Position := 0;
+      StartLength := 1;
+      CodeTreeTally(MatchBufCur);
+    end;
+
+    Inc(MatchBufCur);
+    {Have we processed the complete buffer}
+    if (MatchBufCur = MatchBufSize) then begin
+      MatchBufCur := 0;
+      if TempWrite(ByteArrayPtr(MatchBuf),
+                   SizeOf(StrMatchRec) * MatchBufSize) > 0 then ;
+      if ArchiveStatus <> ecOk then Exit;
+    end;
+
+    {Keep the current match as guess only if its length is small,}
+    {trying to find a better match at the next step. If speed is not}
+    {critical, we use this mechanism for all lengths}
+    if (MaLength > 1) then begin
+      MatchBuf^[MatchBufCur].Position := MaDist;
+      if MaLength <= MaxStringMatch then begin
+        {Set current match literal[0], this is the only way to identify}
+        {the unmatched data if the delayed match will be truncated to 1}
+        MatchBuf^[MatchBufCur].Literal[0] := ImpWindow^[StrStart];
+        StartLength := MaLength;
+        CheckPoint := StrStart + 1;
+        Exit;
+      end;
+      MatchBuf^[MatchBufCur].Length := MaLength;
+      CheckPoint := StrStart + MaLength;
+    end else begin
+      MatchBuf^[MatchBufCur].Position := 0;
+      MatchBuf^[MatchBufCur].Literal[0] := ImpWindow^[StrStart];
+      CheckPoint := StrStart + 1;
+    end;
+    CodeTreeTally(MatchBufCur);
+  end;  {WriteMatch}
+
+  function FindMatchLength(var S1, S2; Size : Word) : Word;
+  {$IFDEF VirtualPascal}
+  assembler; {$FRAME-} {$USES esi,edi}
+  asm
+    mov    ecx,Size
+    mov    eax,ecx
+    mov    edi,s2
+    mov    esi,s1
+    cld
+    repe   cmpsb
+    je     @@AllMatched
+    inc    ecx
+  @@AllMatched:
+    sub    eax,ecx
+  end;
+  {$ELSE}
+  Inline(
+    $8C/$DA/          {mov dx,ds       ;Save DS}
+    $58/              {pop ax          ;AX = Size}
+    $89/$C1/          {mov cx,ax       ;Size into counter}
+    $5F/              {pop di}
+    $07/              {pop es          ;ES:DI => S2}
+    $5E/              {pop si}
+    $1F/              {pop ds          ;DS:SI => S1}
+    $FC/              {cld             ;Go forward}
+    $F3/$A6/          {repe cmpsb      ;Compare until no match or CX=0}
+    $74/$01/          {je AllMatched   ;All bytes matched}
+    $41/              {inc cx}
+    {AllMatched:}
+    $29/$C8/          {sub ax,cx       ;Calculate match length}
+                      {                ;Function result in AX}
+    $8E/$DA);         {mov ds,dx       ;restore DS}
+  {$ENDIF}
+
+  function LongestMatch(CurrentMatch: Word): Word;
+    {-Return longest string, starting from CurrentMatch}
+  label
+    LoopExit;
+  var
+    CurBest        : Word;             {best match so far}
+    Len            : Integer;          {length of current match}
+    ScanPos        : Word;             {pointer in current string}
+    MatchPos       : Word;             {pointer in matched string}
+    MaLength       : Integer;          {best match length so far}
+    ChainCount     : Integer;          {used to limit hash chains}
+    ScanStart      : Word;
+    ScanEnd        : Word;
+
+  begin
+    CurBest := MaxDistance;
+    MaLength := StartLength;
+    ChainCount := MaxChainLen;
+
+    ScanPos := StrStart;
+
+    {Initialize sentinal start and end values}
+    ScanStart := WordPtr(@ImpWindow^[ScanPos])^;
+    ScanEnd := WordPtr(@ImpWindow^[ScanPos+MaLength-1])^;
+
+    repeat
+      MatchPos := CurrentMatch;
+
+      {Skip if the match length cannot increase}
+      if (WordPtr(@ImpWindow^[MatchPos])^ = ScanStart) and
+         (WordPtr(@ImpWindow^[MatchPos+MaLength-1])^ = ScanEnd) then begin
+
+        {Find out how far the match goes}
+        Len := FindMatchLength
+          (ImpWindow^[ScanPos], ImpWindow^[MatchPos], ImpMaxMatchLen);
+
+        if Len > MaLength then begin
+          CurBest := CurrentMatch;
+          MaLength := Len;  {Increase Match Length}
+
+          if (Len >= StrSize) then
+            goto LoopExit;
+
+          ScanEnd := WordPtr(@ImpWindow^[ScanPos+MaLength-1])^;
+        end;
+
+        Dec(ChainCount);
+
+      end;
+      CurrentMatch := ImpPrev^[CurrentMatch];
+    until (ChainCount = 0) or (CurrentMatch = MaxDistance);
+
+LoopExit:
+
+    if (MaLength > StartLength) then
+      MatchLength := MaLength;
+
+    LongestMatch := CurBest;
+  end;  {LongestMatch}
+
+  procedure ProcessLongestMatch(Size: Word);
+  var
+    CurMatch       : Word;        {Starting point for longest match search}
+    BestMatch      : Word;        {Longest match found}
+    DeletePoint    : Integer;     {Position of next string to remove}
+
+  begin
+    BestMatch := MaxDistance;          {Longest match found}
+    DeletePoint := StrStart - ImpBufferSize + ImpMaxMatchLen -1;
+    if (DeletePoint < 0) then
+      Inc(DeletePoint, MaxDistance);
+
+    {Process the input block}
+    repeat
+      {Insert the string ImpWindow[StrStart .. StrStart+strsize-1] in the}
+      {dictionary, and set CurMatch to the head of the hash chain}
+      ImpHashIndex := ((ImpHashIndex shl HashShift) xor
+               ImpWindow^[StrStart + ImpMinMatchLen-1]) and HashMask;
+
+      CurMatch := ImpPrev^[ImpHashIndex + MaxDistance + 1];
+      ImpPrev^[StrStart] := CurMatch;
+      ImpNext^[StrStart] := ImpHashIndex + MaxDistance + 1;
+      ImpPrev^[ImpHashIndex + MaxDistance + 1] := StrStart;
+      ImpNext^[CurMatch] := StrStart;
+
+      if (StrStart = CheckPoint) then begin
+        {Find the longest match, discarding those <= StartLength}
+        MatchLength := 0;
+        if CurMatch <> MaxDistance then begin
+          BestMatch := LongestMatch(CurMatch);
+          {LongestMatch updates MatchLength if longer match found}
+        end;
+        WriteMatch(BestMatch, MatchLength);
+        if ArchiveStatus <> ecOk then Exit;
+      end;
+
+      Inc(DeletePoint);
+
+      {Remove the oldest string from the dictionary, unless we have not}
+      {yet created bufsize dictionary entries}
+      if DeletePoint = MaxDistance then
+        DeletePoint := 0;
+
+      ImpPrev^[ImpNext^[DeletePoint]] := MaxDistance;
+
+      Inc(StrStart);
+      if (StrStart = MaxDistance) then begin
+        StrStart := 0;
+        Dec(CheckPoint, MaxDistance);
+      end;
+      Dec(Size);
+    until Size = 0;
+  end;
+
+  function Min(Var1, Var2: Integer): Integer;
+    {-Return the minimum of two values}
+  begin
+    Min := Var2;  {Assume Var2 is less}
+    if (Var1 < Var2) then
+      Min := Var1;
+  end;
+
+  procedure ProcessImplode(var B; Size: Word);
+    {-Imploding machine}
+  const
+    SizeOfWindow   = ImpMaxMatchLen + WindowSize + DefBufferSize;
+  var
+    Buf            : ByteArray absolute B;
+    Remain         : Integer;
+  begin
+    if Size = 0 then Exit;  {Get out if nothing to do}
+
+    {Determine the input file type if this is the first call}
+    if ImpMinMatchLen = 0 then
+      SetMinMatchLength(Buf, Size);
+    if InsertPoint + Size <= SizeOfWindow then begin
+      Move(Buf[0], ImpWindow^[InsertPoint], Size);
+    end else begin
+      Remain := SizeOfWindow - InsertPoint;
+      Move(Buf[0], ImpWindow^[InsertPoint], Remain);
+      Move(Buf[Remain], ImpWindow^[ImpMaxMatchLen], Size-Remain);
+    end;
+
+    InsertPoint := InsertPoint + Size;
+    if InsertPoint > MaxDistance then begin
+      {Duplicate the end of the ImpWindow}
+      Move(ImpWindow^[MaxDistance], ImpWindow^,
+           Min(InsertPoint - MaxDistance, ImpMaxMatchLen));
+    end;
+    if InsertPoint >= SizeOfWindow then
+      InsertPoint := InsertPoint - MaxDistance;
+    ProcessLongestMatch(Size);
+  end;  {ProcessImplode}
+
+  procedure ZipCodeTree(Handle: Integer; var Result: ByteArrayPtr);
+  var
+    CT        : CodeTreeRecArrayPtr;
+    I, J, K   : Integer;
+    Distance  : Integer;
+
+  begin
+    {Generate the returned value}
+    Distance := 1;
+    CT := CodeTreeTable[Handle].CTArray;
+    J := 0;
+    K := CT^[0].CodeLen;
+    for I := 0 to CodeTreeTable[Handle].CTSize-1 do begin
+      if (K < 1) or (K > 16) then begin
+        ArchiveStatus := epNonFatal + ecUnknownMethod;
+        Exit;
+      end;
+      if (J >= 16) or (CT^[I].CodeLen <> K) then begin
+        CTBuffer[Distance] := Byte((((J-1) shl 4) and $F0) or ((K-1) and $0F));
+        Inc(Distance);
+        J := 1;
+        K := CT^[I].CodeLen;
+      end else
+        Inc(J);
+    end;
+
+    if (J > 0) then begin
+      CTBuffer[Distance] := Byte((((J-1) shl 4) and $F0) or ((K-1) and $0F));
+      Inc(Distance);
+    end;
+    CTBuffer[0] := Distance - 2;
+    Result := @CTBuffer;
+  end;
+
+  procedure WriteCodeTrees;
+    {-Write the code trees}
+  var
+    BPtr           : ByteArrayPtr;
+    BytesWritten   : Integer;
+  begin
+    {Output the literal tree, if any}
+    if (ImpLitTree >= 0) then begin
+      ZipCodeTree(ImpLitTree, BPtr);
+      if ArchiveStatus <> ecOk then Exit;
+      BlockWrite(NewZip, BPtr^, BPtr^[0]+2, BytesWritten);
+      ArchiveStatus := IOResult;
+      if BytesWritten <> BPtr^[0]+2 then
+        ArchiveStatus := ecDiskFull;
+      if ArchiveStatus <> 0 then Exit;
+    end;
+
+    {Output the length tree}
+    ZipCodeTree(ImpLenTree, BPtr);
+    if (ArchiveStatus <> ecOk) then Exit;
+    BlockWrite(NewZip, BPtr^, BPtr^[0]+2, BytesWritten);
+    ArchiveStatus := IOResult;
+    if BytesWritten <> BPtr^[0]+2 then
+      ArchiveStatus := ecDiskFull;
+    if ArchiveStatus <> 0 then Exit;
+
+    {Output the distance tree}
+    ZipCodeTree(ImpDstTree, BPtr);
+    if (ArchiveStatus <> ecOk) then Exit;
+    BlockWrite(NewZip, BPtr^, BPtr^[0]+2, BytesWritten);
+    ArchiveStatus := IOResult;
+    if BytesWritten <> BPtr^[0]+2 then
+      ArchiveStatus := ecDiskFull;
+    if ArchiveStatus <> 0 then Exit;
+  end;
+
+  procedure BitSRLOut(Value, Length: Integer);
+    {-Output bits from right to left}
+  var
+    BytesWritten   : Integer;
+  begin
+    {Send value on length bits. If not enough room in BitStringBuf, use}
+    {(valid) bits from BitStringBuf and (16 - BitSValid) bits from value,}
+    {leaving (width - (16-BitSValid)) unused bits in value}
+    if (BitSValid > BitSBufSize - Length) then begin
+      BitStringBuf := BitStringBuf or (value shl BitSValid);
+
+      {Fill buffer and write and clear when full}
+      if OutPos + 2 <= SizeOf(OutBuf^) then begin
+        Move(BitStringBuf, OutBuf^[OutPos], 2);
+        Inc(OutPos, 2);
+      end else begin
+        BlockWrite(NewZip, OutBuf^, OutPos, BytesWritten);
+        ArchiveStatus := IOResult;
+        if BytesWritten <> OutPos then
+          ArchiveStatus := ecDiskFull;
+        if ArchiveStatus <> 0 then Exit;
+        OutPos := 0;
+        Move(BitStringBuf, OutBuf^[OutPos], 2);
+        Inc(OutPos, 2);
+      end;
+
+      BitStringBuf := Value shr (BitSBufSize - BitSValid);
+      BitSValid := BitsValid + Length - BitSBufSize;
+    end else begin
+      BitStringBuf := BitStringBuf or (Value shl BitSValid);
+      Inc(BitSValid, Length);
+    end;
+  end;
+
+  function BitSReverse(Value, Length: Integer): Integer;
+    {-Reverse the first len bits of a code}
+  var
+    Result     : Integer;
+    lbit, rbit : Word;
+  begin
+    Result := 0;
+    lbit := $8000;
+    rbit := 1;
+    while Length > 0 do begin
+      if (Value and lbit) > 0 then
+        Result := Result or rbit;
+      lbit := lbit shr 1;
+      rbit := rbit shl 1;
+      Dec(Length);
+    end;
+    BitSReverse := Result;
+  end;
+
+  procedure BitSDone;
+  var
+    BytesWritten   : Integer;
+  begin
+
+    {Flush the buffer}
+    if OutPos > 0 then begin
+      BlockWrite(NewZip, OutBuf^, OutPos, BytesWritten);
+      ArchiveStatus := IOResult;
+      if BytesWritten <> OutPos then
+        ArchiveStatus := ecDiskFull;
+      if ArchiveStatus <> 0 then Exit;
+      OutPos := 0;
+    end;
+
+    if (BitSValid > 8) then begin
+      BlockWrite(NewZip, BitStringBuf, 2, BytesWritten);
+      ArchiveStatus := IOResult;
+      if BytesWritten <> 2 then
+        ArchiveStatus := ecDiskFull;
+      if ArchiveStatus <> 0 then Exit;
+    end else if (BitSValid > 0) then begin
+      BlockWrite(NewZip, BitStringBuf, 1, BytesWritten);
+      ArchiveStatus := IOResult;
+      if BytesWritten <> 1 then
+        ArchiveStatus := ecDiskFull;
+      if ArchiveStatus <> 0 then Exit;
+    end;
+    BitStringBuf := 0;
+    BitSValid := 0;
+  end;
+
+  procedure OutputCode(Value, Tree: Integer);
+  begin
+    with CodeTreeTable[Tree].CTArray^[Value] do
+      BitSRLOut(Code, CodeLen);
+  end;
+
+  procedure WriteData;
+    {-Write the compressed data}
+  var
+    SM             : Word;
+    MinMatch       : Integer;
+    BitMask        : Integer;
+    {Used to select the bottom 6 or 7 bits of a distance}
+    Matches        : Integer;
+    Dist, Len      : Integer;
+
+  begin
+    BitMask := (1 shl (ImpBits+1))-1;
+
+    {Determine the minimum match length.}
+    if ImpLitTree >= 0 then
+      MinMatch := 3
+    else
+      MinMatch := 2;
+
+    {Reset temporary file}
+    if TempFileOpen then begin
+      Reset(TFile, 1);
+      if (ArchiveStatus <> ecOk) then Exit;
+    end;
+    TPos := 0;
+
+    {Initialize bit string routines}
+    BitStringBuf := 0;
+    BitSValid := 0;
+
+    {Read and process data from the temporary file}
+    Matches := TempRead(ByteArrayPtr(MatchBuf), SizeOf(StrMatchRec) * MatchBufSize);
+    while (Matches > 0) and (ArchiveStatus = ecOk) do begin
+    {Finished if no more matches or error}
+      for SM := 0 to Matches-1 do begin
+        Dist := MatchBuf^[SM].Position;
+        Len := 0;
+        if Dist < 0 then begin
+          Dist := -Dist;
+          Len := 2;
+        end else if dist > 0 then
+          Len := MatchBuf^[SM].Length;
+        {Output distance and length if enough characters match}
+        if Len >= MinMatch then begin
+          {Ouput one zero bit, then the distance}
+          Dec(Dist);
+          BitSRLOut((Dist shl 1) and BitMask, ImpBits + 1);
+          OutPutCode(dist shr ImpBits, ImpDstTree);
+
+          {Length, depends on how it compares to maximum}
+          Dec(Len, MinMatch);
+          if Len >= 63 then begin
+            {Big length, output code for 63, then surplus}
+            OutPutCode(63, ImpLenTree);
+            BitSRLOut((Len - 63), 8);
+          end else begin
+            {Small length, output code}
+            OutPutCode(Len, ImpLenTree);
+          end;
+        end else if ImpLitTree >= 0 then begin
+          {First or single literal, header bit 1 plus char}
+          BitSRLOut(1, 1);
+          OutPutCode(MatchBuf^[SM].Literal[0], ImpLitTree);
+          if Len = 2 then begin
+            {Second literal, header bit 1 plus char}
+            BitSRLOut(1, 1);
+            OutPutCode(MatchBuf^[SM].Literal[1], ImpLitTree);
+          end;
+        end else begin
+          {Single literal, header bit 1 plus char}
+          BitSRLOut((MatchBuf^[SM].Literal[0] shl 1) + 1, 9);
+        end;
+      end;
+      Matches := TempRead(ByteArrayPtr(MatchBuf), SizeOf(StrMatchRec) * MatchBufSize);
+    end;
+
+    {Make sure we hit EOF on input without an error}
+    if ArchiveStatus <> ecOk then Exit;
+
+    {Flush the output and bit buffers}
+    BitSDone;
+  end;
+
+  procedure OutputImplode;
+    {-Output code trees and data from implode process}
+  begin
+    WriteCodeTrees;
+    if ArchiveStatus <> ecOk then Exit;
+    WriteData;
+  end;
+
+  procedure LongestMatchDone;
+    {-Finish the longest match routines}
+  var
+    Matches        : Integer;
+  begin
+    {Process the remaining input}
+    while StrSize > 0 do begin
+      ProcessLongestMatch(1);
+      if ArchiveStatus <> ecOk then Exit;
+      Dec(StrSize);
+    end;
+
+    {Flush the match buffer}
+    Matches := MatchBufCur + 1;
+    if Matches > 0 then
+      if TempWrite(ByteArrayPtr(MatchBuf), SizeOf(StrMatchRec) * Matches) <>
+                   SizeOf(StrMatchRec) * Matches then begin
+        Exit;
+      end;
+    MatchBufCur := -1;
+  end;
+
+  procedure FreeCodeTree(Handle: Integer);
+    {-Deallocate the memory allocated to a code tree}
+  var
+    Size      : Integer;
+  begin
+    {Free the code tree}
+    Size := CodeTreeTable[Handle].CTSize;
+    FreeMemCheck(CodeTreeTable[Handle].CTArray, Size * SizeOf(CodeTreeRec));
+    CodeTreeTable[Handle].CTArray := nil;
+    CodeTreeTable[Handle].CTSize  := 0;
+  end;
+
+  procedure LoadFrequency(Handle: Integer; var Freq);
+  var
+    L    : LongArray256Ptr absolute Freq;
+    CT   : CodeTreeRecArrayPtr;
+    I    : Integer;
+  begin
+    {Add in the frequencies}
+    CT := CodeTreeTable[Handle].CTArray;
+    for I := 0 to CodeTreeTable[Handle].CTSize-1 do
+      CT^[I].Frequency := CT^[I].Frequency + L^[I];
+  end;
+
+  procedure SplitCodeTree(Part             : CodeTreeRecArrayPtr;
+                          Size             : Integer;
+                          Freq             : LongInt;
+                          Prefix, PrefixLen,
+                          MinBits, MaxBits : Integer);
+  var
+    CT             : CodeTreeRecArrayPtr;
+    TopMaxBits,
+    BotMaxBits,
+    LocalMinBits   : Integer;
+    TopMaxVals,
+    BotMaxVals     : Word;
+    TopSize,
+    BotSize        : Integer;
+    TopFreq,
+    BotFreq,
+    HalfFreq,
+    OneFreq        : LongInt;
+    I, J           : Integer;
+    LeadZeros      : Word;
+    MaxShort,
+    MinLong        : Integer;
+
+  const
+    MaxArray       : array[0..16] of Byte =
+                     ( 8,8,8,8,12,12,14,14,16,16,16,16,16,16,16,16,16);
+  label
+    LoopExit;
+
+  begin
+
+    {If there's only one element in this partition, we simply take}
+    {the prefix value as the code string for the single element}
+
+    if Size = 1 then begin
+      Part^[0].Code := BitSReverse(Prefix, PrefixLen);
+      Part^[0].CodeLen  := PrefixLen;
+      Exit;
+    end;
+
+    {The first issue to consider is that PKUNZIP 1.10's tree-decoding}
+    {shortcuts require a certain number of leading "0" bits in each code}
+    {string, depending on its length. Code strings of 9-12 bits must}
+    {have at least 4 leading zeros, strings of 13 or 14 bits, at least}
+    {6 leading zeros; and strings of 15 or 16 bits, at least 8 leading zeros}
+
+    BotMaxBits := MaxBits;
+    if Prefix <> 0 then
+      TopMaxBits := MaxBits
+    else begin
+      LeadZeros := $8000;
+      I := 0;
+      while (I < PrefixLen) and (Prefix and LeadZeros = 0) do begin
+        Inc(I);
+        LeadZeros := LeadZeros shr 1;
+      end;
+      TopMaxBits := MaxArray[I];
+      if TopMaxBits > MaxBits then
+        TopMaxBits := MaxBits;
+    end;
+    if (TopMaxBits < MinBits) or (BotMaxBits < MinBits) then
+      Exit;
+
+    TopMaxVals := 1 shl (TopMaxBits - PrefixLen -1);
+    I := Size shr 1;
+    if TopMaxVals > I then
+      TopMaxVals := I;
+
+    BotMaxVals := 1 shl (BotMaxBits - PrefixLen -1);
+    I := Size -1;
+    if BotMaxVals > I then
+      BotMaxVals := I;
+
+    if TopMaxVals + BotMaxVals < Size then
+      Exit;
+
+    {Now split the current partition into two halves of as close}
+    {to equal frequency as possible.  If the total of all frequencies}
+    {in the partition is zero, split into two halves of equal size}
+    if Freq = 0 then begin
+      TopSize := Size shr 1;
+      TopFreq := 0;
+    end else begin
+      HalfFreq := Freq shr 1;
+      J := Size shr 1;
+
+      TopSize := 0;
+      TopFreq := 0;
+      OneFreq := Part^[0].Frequency;
+      {Move to halfway point accumulating frequencies along the way so}
+      {we can decide when half of the frequencies have been passed}
+      while (TopSize < J) and (TopFreq <= HalfFreq) and
+            (OneFreq > 0) do begin
+        Inc(TopFreq, OneFreq);
+        Inc(TopSize);
+        OneFreq := Part^[TopSize].Frequency;
+      end;
+
+      if TopSize >= 2 then begin  {See if we need to backup one}
+        OneFreq := Part^[TopSize-1].Frequency;
+        if (TopFreq - HalfFreq) > (HalfFreq - (TopFreq - OneFreq)) then begin
+          Dec(TopSize);
+          Dec(TopFreq, OneFreq);
+        end;
+      end;
+
+    end;
+
+    BotSize := Size - TopSize;
+    BotFreq := Freq - TopFreq;
+
+    while TopSize > TopMaxVals do begin
+      Dec(TopSize);
+      OneFreq := Part^[TopSize].Frequency;
+      Dec(TopFreq, OneFreq);
+      Inc(BotSize);
+      Inc(BotFreq, OneFreq);
+    end;
+    while BotSize > BotMaxVals do begin
+      OneFreq := Part^[TopSize].Frequency;
+      Inc(TopSize);
+      Inc(TopFreq, OneFreq);
+      Dec(BotSize);
+      Dec(BotFreq, OneFreq);
+    end;
+
+    {The number of bits required to represent the values in each half}
+    {may violate PKZIP's requirement (implicit in the way trees are}
+    {compressed in an imploded file) that no code string in the top}
+    {half may be longer than any code string in the bottom half}
+    LocalMinBits := PrefixLen + 1;
+    if LocalMinBits < MinBits then
+      LocalMinBits := MinBits;
+
+    while True do begin
+      MaxShort := PrefixLen + 1;
+      I := 1;
+      while I < BotSize do begin
+        Inc(MaxShort);
+        I := I shl 1;
+      end;
+
+      if I > BotSize then
+        Dec(Maxshort);
+      if Maxshort < LocalMinBits then
+        Maxshort := LocalMinBits;
+      if Maxshort > TopMaxBits then
+        Maxshort := TopMaxBits;
+
+      MinLong := PrefixLen + 1;
+      I := 1;
+      while I < TopSize do begin
+        Inc(MinLong);
+        I := I shl 1;
+      end;
+
+      if MinLong <= MaxShort then
+        goto LoopExit;
+
+      {Backup and adjust TopSize, BotSize, BotFreq and TopFreq}
+      Dec(TopSize);  {Point to previous item in original code tree}
+      OneFreq := Part^[TopSize].Frequency;
+      Dec(TopFreq, OneFreq);
+      Inc(BotSize);
+      Inc(BotFreq, OneFreq);
+    end;
+
+LoopExit:
+
+    {The number of elements in the top half must be enough to}
+    {result in each string having at least "MinBits" bits in all}
+    I := 1 shl (MinBits - PrefixLen -1);
+    while TopSize < I do begin
+      OneFreq := Part^[TopSize].Frequency;  {Get first freq from bottom half}
+      Inc(TopSize);                 {Increase top size}
+      Inc(TopFreq, OneFreq);        {Increase total top freq}
+      Dec(BotSize);                 {Decrease bottom size}
+      Dec(BotFreq, OneFreq);        {Decrease total bottom freq}
+    end;
+
+    {Top is 0..TopSize-1}
+    {Now that the sizes of the two halves of the partition have been}
+    {finalized, process the top and bottom halves by recursion}
+    SplitCodeTree(Part, TopSize, TopFreq, Prefix or (1 shl (15-PrefixLen)),
+                  PrefixLen + 1, LocalMinBits, MaxShort);
+
+    {Bottom half is TopSize..BotSize-1}
+    CT := @Part^[TopSize];
+    SplitCodeTree(CT, BotSize, BotFreq, Prefix,
+                  PrefixLen + 1, Part^[TopSize-1].CodeLen, MaxBits);
+  end;  {SplitCodeTree}
+
+  {Sorting routines}
+
+  procedure SortCodeTree(Handle, Size: Word);
+    {Sort code tree by decending frequency and value}
+    {For small sorts this "Insertion Sort" proves to be very fast}
+  var
+    I, J      : Integer;      {Working indexes}
+    CT        : CodeTreeRec;  {Temp code tree rec}
+  begin
+    for I := 1 to Size-1 do with CodeTreeTable[Handle] do begin
+      {Get pivot value}
+      CT  := CTArray^[I];
+      J := I;
+      while (J > 0) and
+            ( (CTArray^[J-1].Frequency < CT.Frequency) or
+              ( (CTArray^[J-1].Frequency = CT.Frequency) and
+                (CTArray^[J-1].Value < CT.Value) ) ) do begin
+        CTArray^[J] := CTArray^[J-1];
+        Dec(J);
+      end;
+      {Return pivot value to the array}
+      CTArray^[J] := CT;
+    end;
+  end;  {SortCodeTree}
+
+  procedure SortResortBuf(Size: Word);
+    {Sort ResortBuf by increasing length and value}
+  var
+    I, J      : Integer;            {Working indexes}
+    CTR       : CodeTreeResortRec;  {Temp code tree rec}
+  begin
+    for I := 1 to Size-1 do begin
+      {Get pivot value}
+      CTR := ResortBuf^[I];
+      J := I;
+      while (J > 0) and
+            ( (ResortBuf^[J-1].CTRLength > CTR.CTRLength) or
+              ( (ResortBuf^[J-1].CTRLength = CTR.CTRLength) and
+                (ResortBuf^[J-1].CTRValue > CTR.CTRValue) ) ) do begin
+        ResortBuf^[J] := ResortBuf^[J-1];
+        Dec(J);
+      end;
+      {Return pivot value to the array}
+      ResortBuf^[J] := CTR;
+    end;
+  end;  {SortResortBuf}
+
+  procedure GenerateCodes(Handle, MinBits, MaxBits: Integer;
+                          var Saved: LongInt);
+  var
+    CT             : CodeTreeRecArrayPtr;
+    CT2            : CodeTreeRecArrayPtr;
+    I, J, K        : Integer;
+    F              : LongInt;
+    Code, SrcLen   : Integer;
+    TotalFreq,
+    TotalBits      : LongInt;
+    Size           : Integer;       {Alias for CodeTreeTable[handle].CTSize}
+    ZFreq          : Integer;       {Index of zero frequency element}
+    NZFreq         : Integer;       {Index of non zero frequency element}
+
+  begin
+    Size := CodeTreeTable[Handle].CTSize;
+
+    {Sort the data by frequency.  The source values with}
+    {higher frequency need to get the shorter Shannon-Fano codes}
+    TotalFreq := 0;
+    CT := CodeTreeTable[Handle].CTArray;
+    {Use MatchBuf as a temp work area}
+    CT2 := CodeTreeRecArrayPtr(MatchBuf);
+    Move(CT^, CT2^, Size * SizeOf(CodeTreeRec));
+
+    NZFreq := 0;
+    ZFreq := Size - 1;
+    for I := Size - 1 downto 0 do begin
+      if CT2^[I].Frequency <> 0 then begin
+        J := NZFreq;
+        Inc(NZFreq);
+        CT^[J].Frequency := CT2^[I].Frequency;
+        {And calculate total frequency}
+        TotalFreq := TotalFreq + CT^[J].Frequency;
+      end else begin
+        J := ZFreq;
+        Dec(ZFreq);
+        CT^[J].Frequency := 0;
+      end;
+      CT^[J].Code := 0;
+      CT^[J].CodeLen := 0;
+      CT^[J].Value := I;
+    end;
+
+    {Sort the code tree by frequency}
+    SortCodeTree(Handle, NZFreq);
+
+    {Generate the bit strings by a Shannon-Fano (top-down) algorithm}
+    SplitCodeTree(CodeTreeTable[Handle].CTArray,   {Partition start}
+                  Size,                            {Partition size}
+                  TotalFreq,                       {Total frequency}
+                  0,                               {Code string prefix}
+                  0,                               {Number of bits in prefix}
+                  MinBits,                         {Minimum tree depth}
+                  MaxBits);                        {Maximum tree depth}
+
+    {The source value 255 needs to be assigned a bit string with a}
+    {length of at least 10, in order to accommodate shortcuts in}
+    {PKUNZIP's decoding algorithm}
+    I := Size;
+    if I = 256 then begin
+      J := 0;
+      CT := CodeTreeTable[Handle].CTArray;
+      while (CT^[J].Value <> 255) and (I > 0) do begin
+        Dec(I);
+        Inc(J);
+      end;
+
+      if I = 0 then Exit;  {format error}
+
+      if (CT^[J].CodeLen < 10) then begin
+        K := J;  {remember position}
+
+        {Find item with a code length of 10 or greater}
+        while (I > 0) and (CT^[J].CodeLen < 10) do begin
+          Dec(I);
+          Inc(J);
+        end;
+
+        if I = 0 then
+          Dec(J);            {No length >= 10 in tree, use longest}
+
+        {swap values}
+        I := CT^[J].Value;
+        CT^[J].Value := CT^[K].Value;
+        CT^[K].Value := I;
+
+        {swap frequencies}
+        F := CT^[J].Frequency;
+        CT^[J].Frequency := CT^[K].Frequency;
+        CT^[K].Frequency := F;
+      end;
+    end;
+
+    {Fill the resort buffer}
+    for I := 0 to Size-1 do
+      with CodeTreeTable[Handle].CTArray^[I], ResortBuf^[I] do begin
+        CTRLength := CodeLen;
+        CTRValue := Value;
+      end;
+
+    {Sort the buffer on increasing code length}
+    SortResortBuf(Size);
+
+    {Return sorted values to the code tree}
+    for I := 0 to Size-1 do
+      with CodeTreeTable[Handle].CTArray^[I], ResortBuf^[I] do
+        Value := CTRValue;
+
+    {Sort the tree back in ascending order by source value}
+    CT := CodeTreeTable[Handle].CTArray;
+    CT2 := CodeTreeRecArrayPtr(MatchBuf);
+    {Copy to CT2 to use as source}
+    Move(CT^, CT2^, Size * SizeOf(CodeTreeRec));
+
+    for I := Size-1 downto 0 do with CT2^[I] do begin
+      K := Value;
+      CT^[K].Frequency := Frequency;
+      CT^[K].Code      := Code;
+      CT^[K].CodeLen   := CodeLen;
+      CT^[K].Value     := K;
+    end;
+
+    {Determine how many bits will be saved if all the source data is}
+    {encoded using this new set of code strings, as opposed to being}
+    {represented directly in unencoded form}
+    I := CodeTreeTable[Handle].CTSize;
+    Code := 1;
+    SrcLen := 0;
+    while Code < I do begin
+      Code := Code shl 1;
+      Inc(SrcLen);
+    end;
+
+    {Accumulate total bits}
+    TotalBits := 0;
+    for J := 0 to CodeTreeTable[Handle].CTSize-1 do
+      with CodeTreeTable[Handle].CTArray^[J] do
+        TotalBits := TotalBits + Frequency * CodeLen;
+
+    {Number of bits saved by using the tree}
+    Saved := (TotalFreq * SrcLen) - TotalBits;
+  end;  {GenerateCodes}
+
+  procedure MakeCodeTrees;
+    {-Make the code trees}
+  var
+    BPtr          : ByteArrayPtr;
+    Total         : LongInt;
+    Len2,
+    Len3          : LongInt;
+    I             : Integer;
+  begin
+    for I := 62 downto 0 do begin
+      Inc(Distance2Freq^[I], Distance3Freq^[I]);
+      Inc(Length2Freq^[I+1], Length3Freq^[I]);
+    end;
+    Inc(Distance2Freq^[63], Distance3Freq^[63]);
+    Inc(Length2Freq^[63], Length3Freq^[63]);
+
+    {Literal code tree}
+    LoadFrequency(LitCharTree, LitCharFreq);
+    GenerateCodes(LitCharTree, 1, 16, LitCharSaved);
+    if ArchiveStatus <> ecOk then Exit;
+    ZipCodeTree(LitCharTree, BPtr);
+    if ArchiveStatus <> ecOk then Exit;
+    LitCharSaved := LitCharSaved - (Integer(BPtr^[0]+2) shl 3);
+
+    {Length code tree 2}
+    LoadFrequency(Length2Tree, Length2Freq);
+    GenerateCodes(Length2Tree, 1, 16, Length2Saved);
+    if ArchiveStatus <> ecOk then Exit;
+    ZipCodeTree(Length2Tree, BPtr);
+    if ArchiveStatus <> ecOk then Exit;
+    Length2Saved := Length2Saved - (Integer(BPtr^[0]+2) shl 3);
+
+    {Length code tree 3}
+    LoadFrequency(Length3Tree, Length3Freq);
+    GenerateCodes(Length3Tree, 1, 16, Length3Saved);
+    if ArchiveStatus <> ecOk then Exit;
+    ZipCodeTree(Length3Tree, BPtr);
+    if ArchiveStatus <> ecOk then Exit;
+    Length3Saved := Length3Saved - (Integer(BPtr^[0]+2) shl 3);
+
+    {Distance code tree 2}
+    LoadFrequency(Distance2Tree, Distance2Freq);
+    GenerateCodes(Distance2Tree, 1, 8, Distance2Saved);
+    if ArchiveStatus <> ecOk then Exit;
+    ZipCodeTree(Distance2Tree, BPtr);
+    if ArchiveStatus <> ecOk then Exit;
+    Distance2Saved := Distance2Saved - (Integer(BPtr^[0]+2) shl 3);
+
+    {Distance code tree 3}
+    LoadFrequency(Distance3Tree, Distance3Freq);
+    GenerateCodes(Distance3Tree, 1, 8, Distance3Saved);
+    if ArchiveStatus <> ecOk then Exit;
+    ZipCodeTree(Distance3Tree, BPtr);
+    if ArchiveStatus <> ecOk then Exit;
+    Distance3Saved := Distance3Saved - (Integer(BPtr^[0]+2) shl 3);
+
+    {Determine how big the compressed file will be}
+    {with and without a literal character tree}
+
+    {Compressed length (no literal tree)}
+    Total  := LitCharNum + LitChar2Num + StrMatchesNum;
+    Total := Total + LitCharNum shl 3;
+    Total := Total + (LitChar2Num+StrMatchesNum) * 6 - Length2Saved;
+    Total := Total + Length2Freq^[63] shl 3;
+    Total := Total + (LitChar2Num+StrMatchesNum) * (ImpBits+6)
+                     - Distance2Saved;
+    Len2 := (Total+7) shr 3;
+
+    {Compressed length (with literal tree)}
+    Total := LitCharNum + 2 * LitChar2Num + StrMatchesNum;
+    Total := Total + (LitCharNum + 2 * LitChar2Num) * 8 - LitCharSaved;
+    Total := Total + StrMatchesNum * 6 - Length3Saved;
+    Total := Total + Length3Freq^[63] shl 3;
+    Total := Total + StrMatchesNum * (ImpBits+6) - Distance3Saved;
+    Len3 := (Total+7) shr 3;
+
+    {PKUNZIP 1.10 requires that the source value 255 in a "literal"}
+    {tree must be represented by a bit string of length >= 10}
+    if CodeTreeTable[LitCharTree].CTArray^[255].CodeLen < 10 then
+      Len3 := Len2;  {Force use of two trees, i.e. no literal tree}
+
+    {Choose the method of compression which will use the least space}
+    if Len2 <= Len3 then begin
+      ImpMethod := TwoTrees;
+      ImpCompSize := Len2;
+      ImpLitTree := -1;
+      ImpLenTree := Length2Tree;
+      ImpDstTree := Distance2Tree;
+
+      FreeCodeTree(LitCharTree);
+      if ArchiveStatus <> ecOk then Exit;
+      FreeCodeTree(Distance3Tree);
+      if ArchiveStatus <> ecOk then Exit;
+      FreeCodeTree(Length3Tree);
+      if ArchiveStatus <> ecOk then Exit;
+    end else begin
+      ImpMethod := ThreeTrees;
+      ImpCompSize := Len3;
+      ImpLitTree := LitCharTree;
+      ImpLenTree := Length3Tree;
+      ImpDstTree := Distance3Tree;
+
+      FreeCodeTree(Distance2Tree);
+      if ArchiveStatus <> ecOk then Exit;
+      FreeCodeTree(Length2Tree);
+      if ArchiveStatus <> ecOk then Exit;
+    end;
+  end;
+
+  function ImplodedSize: LongInt;
+    {-Return compressed file size and option information}
+  begin
+    ImplodedSize := 0;
+    LongestMatchDone;
+    if ArchiveStatus <> ecOk then Exit;
+    MakeCodeTrees;
+    if ArchiveStatus <> ecOk then Exit;
+
+    {Toggle proper options in Implode Options}
+    if ImpBufferSize = 8192 then
+      OptionFlags := OptionFlags or $02;                               {!!.01}
+    if ImpMethod = ThreeTrees then
+      OptionFlags := OptionFlags or $04;                               {!!.01}
+
+    ImplodedSize := ImpCompSize;
+  end;  {ImplodedSize}
+
+  procedure ImplodeFile;
+    {-Implode file}
+  var
+    I              : Integer;
+
+    {!!.01}
+    procedure Implode;
+    var
+      BytesRead      : Word;
+    begin
+      repeat
+        BlockRead(InFile, InBuf^, DefBufferSize, BytesRead);  {Fill InBuf}
+        ArchiveStatus := IoResult;
+        if ArchiveStatus <> 0 then Exit;
+        if ShowProg then begin
+          Inc(TotalBytesRead, BytesRead);
+          if not glSPF(TotalBytesRead, TotalBytesToRead) then begin
+            ArchiveStatus := ecUserAbort;
+            Exit;
+          end;
+
+        end;
+        {Eof if no more bytes read}
+        InEof := BytesRead = 0;
+        if not InEof then begin
+          {Update CRC count with this block}
+          UpdateCRC(CRC, InBuf^, BytesRead);
+          {Process imploded data}
+          ProcessImplode(InBuf^, BytesRead);
+        end;
+      until InEof;
+    end;
+
+  begin
+    if OrigFileSize < 5632 then begin
+      ImpBufferSize := 4096;             {Buffer size must be power of 2}
+      ImpBits := 6;
+    end else begin
+      ImpBufferSize := 8192;
+      ImpBits := 7;
+    end;
+
+    ShowProg := @glSPF <> nil;
+    CompressionUsed := cmcImploded;
+
+    {Init buffer indexes}
+    InPos := 1;
+    InCnt := 0;
+    OutPos := 0;
+    InEof := False;
+    Crc := -1;
+    TempFileOpen := False;
+    TPos := 0;
+    TMem := 0;
+
+    OptionFlags := 0;  {Clear implode options}                         {!!.01}
+
+    ImpStringSize := ImpMaxMatchLen;
+    FillChar(CTBuffer, SizeOf(CTBuffer), #0);
+
+    {Validate the arguments}
+    if ImpStringSize < ImpMaxMatchLen then
+      StrSize := ImpStringSize
+    else
+      StrSize := ImpMaxMatchLen;
+
+    {Get memory for frequency tables and resort buffer}
+    if not (GetMemCheck(LitCharFreq, SizeOf(LongArray256)) and
+            GetMemCheck(Length2Freq, SizeOf(LongArray64)) and
+            GetMemCheck(Length3Freq, SizeOf(LongArray64)) and
+            GetMemCheck(Distance2Freq, SizeOf(LongArray64)) and
+            GetMemCheck(Distance3Freq, SizeOf(LongArray64)) and
+            GetMemCheck(ResortBuf, SizeOf(ResortBufArray))) then begin
+      ArchiveStatus := epFatal+ecOutOfMemory;
+      Exit;
+    end;
+
+    {Initialize length and distance freqency arrays}
+    FillChar(LitCharFreq^, SizeOf(LongArray256), #0);
+    FillChar(Length2Freq^, SizeOf(LongArray64), #0);
+    FillChar(Length3Freq^, Sizeof(LongArray64), #0);
+    FillChar(Distance2Freq^, SizeOf(LongArray64), #0);
+    FillChar(Distance3Freq^, SizeOf(LongArray64), #0);
+    FillChar(ResortBuf^, SizeOf(ResortBufArray), #0);
+
+    {Get memory for tables and buffer}
+    if not (GetMemCheck(ImpNext, (MaxDistance+9)*SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF})) and
+            GetMemCheck(ImpPrev, (MaxDistance+HashSize+9)*SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF})) and
+            GetMemCheck(ImpWindow, ImpMaxMatchLen+WindowSize+DefBufferSize) and
+            GetMemCheck(TBuf, TempBufSize)) then begin
+      ArchiveStatus := epFatal+ecOutOfMemory;
+      Exit;
+    end;
+
+    {Initialize tables and buffer}
+    FillChar(ImpNext^, (MaxDistance+9)*SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}), #0);
+    FillChar(ImpPrev^, (MaxDistance+HashSize+9)*SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}), #0);
+    FillChar(ImpWindow^, ImpMaxMatchLen+WindowSize+DefBufferSize, #0);
+    FillChar(TBuf^, TempBufSize, #0);
+
+    for I := 0 to HashSize-1 do
+      ImpPrev^[MaxDistance+1+I] := HashChainTail;
+    for I := 0 to MaxDistance do
+      ImpNext^[I] := HashChainTail;
+
+    ImpHashIndex := 0;
+    InsertPoint := ImpMaxMatchLen;
+    ImpMinMatchLen := 0;
+
+    StrStart := 0;
+    CheckPoint := StrSize;
+
+    if not GetMemCheck(MatchBuf, MatchBufSize * SizeOf(StrMatchRec)) then begin
+      ArchiveStatus := epFatal+ecOutOfMemory;
+      Exit;
+    end;
+
+    {Initialize the match buffer}
+    FillChar(MatchBuf^, MatchBufSize * SizeOf(StrMatchRec), #0);
+
+    MatchBufCur := -1;
+    StartLength := 1;
+
+    {Initialize the list of active code trees}
+    FillChar(CodeTreeTable, SizeOf(CodeTreeTable), #0);
+
+    LitCharNum := 0;
+    LitChar2Num := 0;
+    StrMatchesNum := 0;
+
+    {Initialize code trees}
+    CodeTreeAlloc(256, LitCharTree);
+    if ArchiveStatus <> ecOk then Exit;
+
+    CodeTreeAlloc(64, Length2Tree);
+    if ArchiveStatus <> ecOk then Exit;
+
+    CodeTreeAlloc(64, Length3Tree);
+    if ArchiveStatus <> ecOk then Exit;
+
+    CodeTreeAlloc(64, Distance2Tree);
+    if ArchiveStatus <> ecOk then Exit;
+
+    CodeTreeAlloc(64, Distance3Tree);
+    if ArchiveStatus <> ecOk then Exit;
+
+    {Initialize the buffer used for output. This buffer is allocated and}
+    {deallocated within the CompressFileMaskList method}
+    OutPos := 0;
+    FillChar(OutBuf^, SizeOf(OutBuf^), #0);
+
+    {Init counters used in show progress calls}
+    TotalBytesRead := 0;
+    TotalBytesToRead := OrigFileSize;
+
+    {Compress the file}                                                {!!.01}
+    Implode;                                                           {!!.01}
+
+    if ArchiveStatus = ecOk then begin                                 {!!.01}
+      {If ImpMinMatchLen is 3 then SetMinMatchLength found mostly text}{!!.01}
+      FileIsText := ImpMinMatchLen = 3;                                {!!.01}
+      {Get compressed file size and finish the longest match routines} {!!.01}
+      CompressSize := ImplodedSize;                                    {!!.01}
+      OutPutImplode;                 {Output the imploded data}        {!!.01}
+    end;                                                               {!!.01}
+
+    {Close and erase temporary file if opened}
+    if TempFileOpen then begin
+      Close(TFile);
+      if IoResult <> 0 then ;  {Ignore result}
+      Erase(TFile);
+      if IoResult <> 0 then ;  {Ignore result}
+      TempFileOpen := False;
+    end;
+
+    {Discard code trees}
+    for I := 0 to MaxTrees-1 do
+      if CodeTreeTable[I].CTArray <> nil then
+        FreeCodeTree(I);
+
+    FreeMemCheck(MatchBuf, MatchBufSize * SizeOf(StrMatchRec));
+    FreeMemCheck(TBuf, TempBufSize);
+    FreeMemCheck(ImpWindow, ImpMaxMatchLen+WindowSize+DefBufferSize);
+    FreeMemCheck(ImpPrev, (MaxDistance+HashSize+9)*SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+    FreeMemCheck(ImpNext, (MaxDistance+9)*SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+
+    {Free memory for frequency tables and resort buffer}
+    FreeMemCheck(LitCharFreq, SizeOf(LongArray256));
+    FreeMemCheck(Length2Freq, SizeOf(LongArray64));
+    FreeMemCheck(Length3Freq, SizeOf(LongArray64));
+    FreeMemCheck(Distance2Freq, SizeOf(LongArray64));
+    FreeMemCheck(Distance3Freq, SizeOf(LongArray64));
+    FreeMemCheck(ResortBuf, SizeOf(ResortBufArray));
+
+  end;  {ImplodeFile}
+
+

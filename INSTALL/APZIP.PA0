@@ -1,0 +1,274 @@
+type
+  LocalHeader =
+    record
+      {... signature ...}         {= LocalHeaderSig}
+      VersionNeeded : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};
+                                  {version needed to extract}
+
+      BitFlag : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};
+                                  {general purpose bit flag}
+
+      Method : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};
+                                  {compression method: 0-8}            {!!.01}
+
+      Time : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};
+                                  {time file was last modified}
+
+      Date : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};
+                                  {date "}
+
+      Crc : LongInt;              {32-bit CRC}
+      NewSize : LongInt;          {compressed size of file}
+      OrigSize : LongInt;         {uncompressed size of file}
+      NameLength : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};
+                                  {length of filename}
+
+      ExtraLength : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};
+                                  {length of extra field}
+
+      {... filename (variable size)     ...}
+      {... extra field (variable size)  ...}
+      {... compressed data ...}
+    end;
+
+  CentralDirHead =
+    record
+      {... signature ...}         {= CentralDirHeadSig}
+      VersionMade : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};    {version created by}
+      VersionNeeded : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};  {version needed to extract}
+      BitFlag : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};        {general purpose bit flag}
+      Method : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};         {compression method: 0..8}           {!!.01}
+      Time : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};           {time file was last modified}
+      Date : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};           {date "}
+      Crc : LongInt;              {32-bit CRC}
+      NewSize : LongInt;          {compressed size of file}
+      OrigSize : LongInt;         {uncompressed size of file}
+      NameLength : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};     {length of filename}
+      ExtraLength : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};    {length of extra field}
+      CommentLength : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};  {length of comment for file}
+      DiskNumberStart : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};{number of disk on which file begins}
+      InternalAttrs : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};  {internal file attributes, low bit = Text}
+      ExternalAttrs : LongInt;    {external file attributes, DOS dir attr}
+      LocalHeaderOfs : LongInt;   {relative offset of local header for file}
+      {... filename (variable size)     ...}
+      {... extra field (variable size)  ...}
+      {... file comment (variable size) ...}
+    end;
+
+  CentralDirTail =
+    record
+      {... signature ...}         {= CentralDirTailSig}
+      DiskNumber : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};     {disk number for this disk}
+      CentralDirDisk : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}; {number of disk with start of central dir}
+      EntriesThisDisk : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};{total entries in directory on this disk}
+      TotalEntries : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};   {total entries in central directory}
+      CentralDirSize : LongInt;   {size of the central directory}
+      CentralDirOfs : LongInt;    {offset of start of central dir with respect
+                                   to starting disk number}
+      CommentLength : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};  {length of ZIP file comment}
+      {... zip file comment (variable size) ...}
+    end;
+
+  ZipComment = array[1..65521] of Char; {a comment in a ZIP file}
+  CommentPtr = ^ZipComment;
+  ExtraPtr = ^ZipComment;
+
+  CompressionMode =                                                    {!!.01}
+    (cmBestMethod, cmStore, cmShrink, cmImplode, cmDeflate);           {!!.01}
+
+  {#Z+} {!!.01}{begin}
+  ByteArray = array[0..65535-1] of Byte;
+  ByteArrayPtr = ^ByteArray;
+  IntegerArray     = array[0..65535 div SizeOf(Integer)-1] of {$IFDEF VirtualPascal} SmallInt {$ELSE} Integer {$ENDIF};
+  IntegerArrayPtr  = ^IntegerArray;
+
+  ppHuft           = ^pHuft;
+  pHuft            = ^Huft;
+  Huft             = record
+    ExtraBits      : Byte;   {Number of extra bits}
+    NumBits        : Byte;   {Number of bits in this code or subcode}
+    case Byte of
+      0: (N        : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF});  {Literal, length base, or distance base}
+      1: (NextLevel: pHuft); {Pointer to next level of table}
+  end;
+
+  FCData = record
+    case Byte of
+      0 : (Freq : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF});  {frequency count}
+      1 : (Code : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF});  {bit string}
+  end;
+
+  DLData = record
+    case Byte of
+      0 : (Dad : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF});  {father node in Huffman tree}
+      1 : (Len : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF});  {length of bit string}
+  end;
+
+  {Data structure describing a single value and its code string}
+  CTData = record
+    FC : FCData;
+    DL : DLData;
+  end;
+  CTDataArray = array[0..65535 div SizeOf(CTData) - 1] of CTData;
+  CTDataArrayPtr = ^CTDataArray;
+  {#Z-} {!!.01}{end}
+
+  ShowMethodProc = procedure(Method : Byte; FName : PathStr);
+  ExtractSuccessFunc = function(var CDH : CentralDirHead;
+                                FName   : PathStr;
+                                ErrCode : Word) : Boolean;
+  OkToWriteFunc = function(var CDH : CentralDirHead;
+                           var FName : PathStr) : Boolean;
+  ShowCommentsProc = procedure(FName : PathStr;
+                               CP    : CommentPtr;
+                               CLen  : Word);
+  ShowProgressFunc = function(BytesWritten, TotalBytes : LongInt) : Boolean;
+  OkToCompressFunc = function(NewFile, OldFile : PathStr;
+                              var CDH : CentralDirHead) : Boolean;
+  CompressSuccessFunc = function(var CDH : CentralDirhead;
+                                 FName : PathStr;
+                                 ErrCode : Word) : Boolean;
+  FileCommentFunc = function(var CDH : CentralDirHead;
+                             FName : PathStr;
+                             var CP : CommentPtr;
+                             var Len : Word) : Boolean;
+
+const
+  {compression method codes}
+  cmcStored    = 0;               {stored (no compression)}
+  cmcShrunk    = 1;               {shrunk}
+  cmcReduced1  = 2;               {reduced - factor of 1}
+  cmcReduced2  = 3;               {reduced - factor of 2}
+  cmcReduced3  = 4;               {reduced - factor of 3}
+  cmcReduced4  = 5;               {reduced - factor of 4}
+  cmcImploded  = 6;               {imploded}
+  cmcTokenized = 7;               {tokenized}                          {!!.01}
+  cmcDeflated  = 8;               {deflated}                           {!!.01}
+
+  {#Z+}
+  ImpMaxMatchLen = 320;           {Implode max match length}
+  {#Z-}
+
+type
+  ZipNodePtr = ^ZipNode;
+  ZipNode =
+    record
+      Next   : ZipNodePtr;
+      CDH    : CentralDirHead;
+      FName  : PathStr;
+      CP     : CommentPtr;
+      EP     : ExtraPtr;
+      Tagged : Boolean;
+    end;
+  ZipFileList =
+    record
+      Head, Tail : ZipNodePtr;
+      Count : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};
+    end;
+
+{$IFDEF UsePModeDLL}
+
+procedure InitZipFile(ZipName : PathStr); Export;
+procedure CreateZipFile(ZipName : PathStr); Export;
+procedure DoneZipFile; Export;
+procedure ExtractFileMaskListZip(var FML : FileMaskList); Export;
+procedure ExtractZip(Mask : PathStr); Export;
+procedure CompressFileMaskListZip(var FML : FileMaskList); Export;
+procedure CompressZip(Mask : PathStr); Export;
+procedure FreshenArchiveZip; Export;
+procedure DeleteFileMaskListZip(var FML : FileMaskList); Export;
+procedure DeleteFilesZip(Mask : PathStr); Export;
+procedure SetZipComment(var Comment; Len : Word); Export;
+procedure UpdateCommentsFileMaskList(var FML : FileMaskList); Export;
+procedure InitZipFileList(var ZFL : ZipFileList); Export;
+procedure BuildZipFileList(var ZFL : ZipFileList; var FML : FileMaskList); Export;
+procedure DeleteZipFileListNode(var ZFL : ZipFileList; ZNP : ZipNodePtr); Export;
+procedure ExtractZipFileList(var ZFL : ZipFileList); Export;
+procedure DoneZipFileList(var ZFL : ZipFileList); Export;
+procedure SetOkToWriteFuncZip(OKF : OkToWriteFunc); Export;
+procedure SetShowCommentsProcZip(SCP : ShowCommentsProc); Export;
+procedure SetShowMethodProcZip(SMP : ShowMethodProc); Export;
+procedure SetExtractSuccessFuncZip(ESF : ExtractSuccessFunc); Export;
+procedure SetShowProgressFuncZip(SPF : ShowProgressFunc); Export;
+procedure SetOkToCompressFuncZip(OKC : OkToCompressFunc); Export;
+procedure SetCompressSuccessFuncZip(CSF : CompressSuccessFunc); Export;
+procedure SetFileCommentFuncZip(FCF : FileCommentFunc); Export;
+procedure SetCompressionModeZip(Mode : CompressionMode); Export;
+procedure SetImplodeFactors(MatchLength, Reps : Integer); Export;
+procedure DefShowMethodProcZip(Method : Byte; FName : PathStr); Export;
+function DefExtractSuccessFuncZip(var CDH : CentralDirHead;
+                                  FName   : PathStr;
+                                  ErrCode : Word) : Boolean; Export;
+function DefOkToWriteFuncZip(var CDH : CentralDirHead; FName : PathStr) : Boolean; Export;
+procedure DefShowCommentsProcZip(FName : PathStr; CP : CommentPtr; CLen : Word); Export;
+function DefShowProgressFuncZip(BytesWritten, TotalBytes : LongInt) : Boolean; Export;
+function DefCompressSuccessFuncZip(var CDH : CentralDirHead;
+                                   FName : PathStr;
+                                   ErrCode : Word) : Boolean; Export;
+function DefOkToCompressFuncZip(NewFile, OldFile : PathStr;
+                                var CDH : CentralDirHead) : Boolean; Export;
+function DefFileCommentFuncZip(var CDH : CentralDirHead;
+                               FName : PathStr;
+                               var CP : CommentPtr;
+                               var Len : Word) : Boolean; Export;
+procedure SetDeflateLevel(Level : Byte); Export;                       {!!.01}
+{#Z+}
+procedure ImplodeFile; Export;
+procedure DeflateFile(Level : Integer); Export;                        {!!.01}
+procedure InflateFile; Export;                                         {!!.01}
+{#Z-}
+
+{$ELSE}
+
+procedure InitZipFile(ZipName : PathStr);
+procedure CreateZipFile(ZipName : PathStr);
+procedure DoneZipFile;
+procedure ExtractFileMaskListZip(var FML : FileMaskList);
+procedure ExtractZip(Mask : PathStr);
+procedure CompressFileMaskListZip(var FML : FileMaskList);
+procedure CompressZip(Mask : PathStr);
+procedure FreshenArchiveZip;
+procedure DeleteFileMaskListZip(var FML : FileMaskList);
+procedure DeleteFilesZip(Mask : PathStr);
+procedure SetZipComment(var Comment; Len : Word);
+procedure UpdateCommentsFileMaskList(var FML : FileMaskList);
+procedure InitZipFileList(var ZFL : ZipFileList);
+procedure BuildZipFileList(var ZFL : ZipFileList; var FML : FileMaskList);
+procedure DeleteZipFileListNode(var ZFL : ZipFileList; ZNP : ZipNodePtr);
+procedure ExtractZipFileList(var ZFL : ZipFileList);
+procedure DoneZipFileList(var ZFL : ZipFileList);
+procedure SetOkToWriteFuncZip(OKF : OkToWriteFunc);
+procedure SetShowCommentsProcZip(SCP : ShowCommentsProc);
+procedure SetShowMethodProcZip(SMP : ShowMethodProc);
+procedure SetExtractSuccessFuncZip(ESF : ExtractSuccessFunc);
+procedure SetShowProgressFuncZip(SPF : ShowProgressFunc);
+procedure SetOkToCompressFuncZip(OKC : OkToCompressFunc);
+procedure SetCompressSuccessFuncZip(CSF : CompressSuccessFunc);
+procedure SetFileCommentFuncZip(FCF : FileCommentFunc);
+procedure SetCompressionModeZip(Mode : CompressionMode);
+procedure SetImplodeFactors(MatchLength, Reps : Integer);
+procedure DefShowMethodProcZip(Method : Byte; FName : PathStr);
+function DefExtractSuccessFuncZip(var CDH : CentralDirHead;
+                                  FName   : PathStr;
+                                  ErrCode : Word) : Boolean;
+function DefOkToWriteFuncZip(var CDH : CentralDirHead; FName : PathStr) : Boolean;
+procedure DefShowCommentsProcZip(FName : PathStr; CP : CommentPtr; CLen : Word);
+function DefShowProgressFuncZip(BytesWritten, TotalBytes : LongInt) : Boolean;
+function DefCompressSuccessFuncZip(var CDH : CentralDirHead;
+                                   FName : PathStr;
+                                   ErrCode : Word) : Boolean;
+function DefOkToCompressFuncZip(NewFile, OldFile : PathStr;
+                                var CDH : CentralDirHead) : Boolean;
+function DefFileCommentFuncZip(var CDH : CentralDirHead;
+                               FName : PathStr;
+                               var CP : CommentPtr;
+                               var Len : Word) : Boolean;
+procedure SetDeflateLevel(Level : Byte);                               {!!.01}
+{#Z+}
+procedure ImplodeFile;
+procedure DeflateFile(Level : Integer);                                {!!.01}
+procedure InflateFile;                                                 {!!.01}
+{#Z-}
+
+{$ENDIF}
+

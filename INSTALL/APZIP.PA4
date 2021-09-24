@@ -1,0 +1,2611 @@
+{!!.01} {Added deflate/inflate support (This file)}
+
+const
+  iWindowSize      = $8000;  {Inflate window size}
+  iMaxCodeLen      = 16;     {Maximum bit length of any code}
+  iMaxCodes        = 288;    {Maximum number of codes in any set}
+
+  dWindowSize      = $4000;  {Deflate window size, must be a power of 2}
+  dWindowMask      = dWindowSize-1;
+
+  dMaxMatchLen     = 258;    {The maximum match length}
+  dMinMatchLen     = 3;      {The minimum match length}
+
+  {Sizes of match buffers for literals/lengths and distances}
+  dLitBufSize      = $4000;
+  dHashBits        = 14;     {Number of bits used to hash strings}
+
+  dFlagBufSize     = dLitBufSize div 8;
+  dDistBufSize     = dLitBufSize;
+
+  dHashSize        = 1 shl dHashBits;
+  dHashMask        = dHashSize - 1;
+  dHashShift       = (dHashBits + dMinMatchLen - 1) div dMinMatchLen;
+
+  {Minimum amount of look ahead, except at the end of the input file}
+  dMinLookAhead    = dMaxMatchLen + dMinMatchLen + 1;
+  dMaxDistance     = dWindowSize - dMinLookAhead;
+
+  dMaxCodeBits     = 15;     {All codes must not exceed this value}
+  dLengthCodes     = 29;     {Number of length codes, not counting the
+                              special end of block code}
+  dNumLiterals     = 256;    {Number of literal bytes 0..255}
+  dEndOfBlockCode  = 256;    {End of block literal code}
+  dNumLitCodes     = dNumLiterals + dLengthCodes + 1;  {Number of Literal or
+                              Length codes, including the end of block code}
+  dNumDistCodes    = 30;     {Number of distance codes}
+  dNumBitLenCodes  = 19;     {Number of codes used to transfer the bit lengths}
+  dHeapSize        = (2 * dNumLitCodes) + 1; {Maximum heap size}
+
+  {Index within the heap array of least frequent node in the Huffman tree}
+  dLeastFrequent   = 1;
+
+  {repeat previous bit length 3-6 times (2 bits of repeat count)}
+  dREP_3_6         = 16;
+  {repeat a zero length 3-10 times  (3 bits of repeat count)}
+  dREPZ_3_10       = 17;
+  {repeat a zero length 11-138 times  (7 bits of repeat count)}
+  dREPZ_11_138     = 18;
+
+type
+  iSlidePtr        = ^iSlideType;
+  iSlideType       = array[0..iWindowSize] of Byte;
+
+  {Internal file attribute flags}
+  FileType         = (Binary, Ascii, Unknown);
+
+  {Values for dMaxLazyMatch, dGoodMatch and dMaxChainLength, depending on
+   the desired pack level (0..9). The values in the constant section below
+   have been tuned to exclude worst case performance for pathological files.
+   Better values may be found for specific files}
+  ConfigRec  = record
+    GoodLen  : {$IFDEF VirtualPascal} SmallInt {$ELSE} Integer {$ENDIF};
+    MaxLazy  : {$IFDEF VirtualPascal} SmallInt {$ELSE} Integer {$ENDIF};
+    MaxChain : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};
+    BitFlag  : Byte;
+  end;
+
+  TreeDescription = record
+    DynamicTree : CTDataArrayPtr;  {the dynamic tree}
+    StaticTree  : CTDataArrayPtr;  {corresponding static tree or NULL}
+    ExtraBits   : WordArrayPtr;    {extra bits for each code or NULL}
+    ExtraBase   : {$IFDEF VirtualPascal} SmallInt {$ELSE} Integer {$ENDIF};         {base index for ExtraBits}
+    MaxElements : {$IFDEF VirtualPascal} SmallInt {$ELSE} Integer {$ENDIF};         {max number of elements in the tree}
+    MaxLength   : {$IFDEF VirtualPascal} SmallInt {$ELSE} Integer {$ENDIF};         {max bit length for the codes}
+    MaxCode     : {$IFDEF VirtualPascal} SmallInt {$ELSE} Integer {$ENDIF};         {largest code with non zero frequency}
+  end;
+
+var
+  {Dynamically allocated}
+  dWindow     : ByteArrayPtr;     {The input window}
+  dPrev       : WordArrayPtr;     {Prev entries in hash chain}
+  dNext       : WordArrayPtr;     {Next entries in hash chain}
+  dLitBuf     : ByteArrayPtr;     {Buffer for literals/lengths}
+  dDistBuf    : WordArrayPtr;     {Buffer for distances}
+  dHeap       : IntegerArrayPtr;  {heap used to build the Huffman trees}
+
+  {dFlagBuf is a bit array distinguishing literals from lengths in
+  dLitBuf, and thus indicating the presence or absence of a distance}
+  dFlagBuf    : ByteArrayPtr;
+
+  {Trees}
+  dDynamicLitTree  : CTDataArrayPtr;  {Literal and length tree}
+  dDynamicDistTree : CTDataArrayPtr;  {Distance tree}
+  dStaticLitTree   : CTDataArrayPtr;  {The static literal tree}
+  dStaticDistTree  : CTDataArrayPtr;  {The static distance tree}
+  dBitLenTree      : CTDataArrayPtr;  {Huffman tree for the bit lengths}
+
+const
+  {Copy lengths for literal codes 257..285}
+  CopyLengths      : array[0..30] of {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF} = (
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
+    35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258, 0, 0);
+
+  CopyOffsets      : array[0..29] of {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF} = (
+    {Copy offsets for distance codes 0..29}
+    1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
+    257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145,
+    8193, 12289, 16385, 24577);
+
+  MaskBits: array [0..16] of {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF} = (
+    $0000, $0001, $0003, $0007, $000F, $001F, $003F, $007F, $00FF,
+    $01FF, $03FF, $07FF, $0FFF, $1FFF, $3FFF, $7FFF, $FFFF);
+
+  {The lengths of the bit length codes are sent in order of decreasing
+   probability, to avoid transmitting the lengths for unused bit length codes}
+  BitLenOrder : array[0..dNumBitLenCodes - 1] of {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF} = (
+    16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15);
+
+  {Extra bits for literal codes 257..285}
+  ExtraLitLenBits : array[0..dLengthCodes - 1 + 2] of {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF} = (
+    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
+    3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0, 99, 99); {99 = invalid}
+
+  {Extra bits for distance codes}
+  ExtraDistBits : array[0..dNumDistCodes - 1] of {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF} = (
+    0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+    7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13);
+
+  {Extra bits for each bit length code}
+  ExtraBitLenBits : array[0..dNumBitLenCodes - 1] of {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF} = (
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 7);
+
+  {Requires MaxLazy >= dMinMatchLen and MaxChain >= 4}
+  ConfigTable : array[1..9] of ConfigRec = (
+  (GoodLen:04; MaxLazy:004; MaxChain:0016; BitFlag:4),  {Max speed}
+  (GoodLen:06; MaxLazy:008; MaxChain:0016; BitFlag:0),
+  (GoodLen:08; MaxLazy:016; MaxChain:0032; BitFlag:0),
+  (GoodLen:08; MaxLazy:032; MaxChain:0064; BitFlag:0),
+  (GoodLen:08; MaxLazy:064; MaxChain:0128; BitFlag:0),
+  (GoodLen:08; MaxLazy:128; MaxChain:0256; BitFlag:0),
+  (GoodLen:08; MaxLazy:128; MaxChain:0512; BitFlag:0),
+  (GoodLen:32; MaxLazy:258; MaxChain:1024; BitFlag:0),
+  (GoodLen:32; MaxLazy:258; MaxChain:4096; BitFlag:2)); {Max compression}
+
+var
+  dLitTreeDescription    : TreeDescription;
+  dDistTreeDescription   : TreeDescription;
+  dBitLenTreeDescription : TreeDescription;
+
+  {First normalized length for each code}
+  dBaseLength    : IntegerArrayPtr;
+  {First normalized distance for each code (0 = distance of 1)}
+  dBaseDist      : IntegerArrayPtr;
+  {Length code for each normalized match length}
+  dLengthCode    : ByteArrayPtr;
+  {Distance codes - The first 256 values correspond to the distances 3..258}
+  {the last 256 values correspond to the top 8 bits of the 15 bit distances}
+  dDistCode      : ByteArrayPtr;
+  {Number of codes at each bit length for an optimal tree}
+  dBitLenCount   : WordArrayPtr;
+  {Depth of each subtree used as tie breaker for trees of equal frequency}
+  dDepth         : ByteArrayPtr;
+
+  dOptimalLen    : LongInt;  {Bit length of block with optimal trees}
+  dStaticLen     : LongInt;  {Bit length of block with static trees}
+  dCompressedLen : LongInt;  {Total bit length of compressed file}
+
+  dBlockStart    : LongInt;  {Window offset of current block}
+  dLookAhead     : Word;     {Number of valid bytes ahead in window}
+  dStrStart      : Word;     {Start of string to search}
+  dMatchStart    : Word;     {Start of matching string}
+  dPrevLength    : Word;     {Length of the best match at previous step}
+
+  dLastLit       : Word;     {Running index in dLitBuf}
+  dLastDist      : Word;     {Running index in dDistBuf}
+  dLastFlags     : Word;     {Running index in dFlagBuf}
+  dBitStrBuf     : Word;     {Bit string output buffer}
+
+  {Attempt to find a better match only when the current match is strictly
+   smaller than this value}
+  dMaxLazyMatch  : Word;
+  {Stop search when the previous match is longer than this}
+  dGoodMatch     : Integer;
+  {To speed up deflation, hash chains are never searched beyond this length}
+  {Higher values improve compression ratios slightly but degrade the speed}
+  dMaxChainLength: Word;
+
+  dHashIndex     : Word;  {Hash index of string to be inserted}
+
+ {The sons of dHeap[n] are dHeap[2*n] and dHeap[2*n+1]. dHeap[0] is not used.
+  The same heap array is used to build all trees}
+  dHeapLen         : Integer;    {Number of elements in the heap}
+  dHeapMax         : Integer;    {Element of largest frequency}
+
+  {Bits are filled in dFlags starting at bit 0 (least significant)}
+  dFlags         : Byte;     {Current flags not yet saved in dFlagBuf}
+  dFlagBit       : Byte;     {Current bit used in dFlags}
+  dTypeOfFile    : FileType; {Binary, Ascii, or Unknown}
+
+  dCompressionLevel: Byte;  {1..9 -- Fast to Slow}
+
+ {-------- File Inflate -------------------------------}
+
+ {The Inflate algorithm uses a sliding 32K byte window on the uncompressed
+  stream to find repeated byte strings.  This is implemented here as a
+  circular buffer.  The index is updated simply by incrementing and then
+  and'ing with $7FFF (32K-1).}
+
+var
+  iSlide           : iSlidePtr;        {Sliding window buffer}
+  iSlidePos        : Word;             {Current position in Slide}
+  iOverflowBuf     : Word;             {Bit overflow holding buffer}
+
+  procedure NeedBits(N : Byte);
+    {-Insure at least N bits are in the buffer}
+  begin
+    while (BitSValid < N) and (ArchiveStatus = ecOk) do begin
+      ReadNext;  {ReadNext will set ArchiveStatus on errors}
+      if BitSValid + N > 16 then
+        iOverflowBuf := CurByte shr (16 - BitSValid);
+      dBitStrBuf := dBitStrBuf or CurByte shl BitSValid;
+      Inc(BitSValid, 8);
+    end;
+  end;
+
+  procedure DumpBits(N : Byte);
+    {-Discard N bits from the buffer}
+  begin
+    dBitStrBuf := (dBitStrBuf shr N);
+    Dec(BitSValid, N);
+    if iOverflowBuf <> 0 then begin
+      dBitStrBuf := dBitStrBuf or (iOverflowBuf shl (16-N));
+      iOverflowBuf := 0;
+    end;
+  end;
+
+  procedure FreeHufTable(T : pHuft);
+    {-Free the tables built by BuildHufTable(), which makes a linked list of
+     the tables it made, with the links in a dummy first entry of each table}
+  var
+    P, Q     : pHuft;
+    Count    : Word;
+  begin
+    {Go through linked list, freeing from the allocated (t[-1]) address}
+    P := T;
+    while P <> nil do begin
+      DecPtr(P, SizeOf(Huft));
+      Q := P^.NextLevel;
+      {Go back one Word and get number of hufts to free}
+      DecPtr(P, SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+      Count := WordPtr(P)^;
+      FreeMemCheck(P, (Count * SizeOf(Huft)) + 2);
+      P := Q;
+    end;
+  end;
+
+  function BuildHufTable(CodeLength : WordPtr;
+                         NumCodes,
+                         NumSimpleCodes : Word;
+                         var D0;  {CodeArray}
+                         var E0;  {CodeArray}
+                         T : ppHuft;
+                         var LookupBits : Integer) : Integer;
+    {-Given a list of code lengths and a maximum table size, make a set of
+     tables to decode that set of codes.  Return zero on success, one if
+     the given code set is incomplete (the tables are still built in this
+     case), two if the input is invalid (all zero length codes or an
+     oversubscribed set of lengths), and three if not enough memory.}
+
+    {CodeLength:     code lengths in bits (all assumed <= iMaxCodeLen)}
+    {NumCodes:       number of codes (assumed <= iMaxCodes)}
+    {NumSimpleCodes: number of simple-valued codes (0..s-1)}
+    {D0:             list of base values for non-simple codes}
+    {E0:             list of extra bits for non-simple codes}
+    {T: result:      starting table}
+    {LookupBits:     maximum lookup bits, returns actual}
+
+  label
+    GotCodes;
+  type
+    CodeArray    = array[0..287] of {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF};
+  var
+    MaxCodeLen   : Integer;  {maximum code length}
+    MinCodeLen   : Integer;  {number of bits in current code}
+    CodesAdded   : Integer;  {number of dummy codes added}
+    PriorBits    : Integer;  {bits before this table}
+    Level        : Integer;  {table level}
+    BitsPerTable : Integer;  {bits in current table}
+    NumEntries   : Word;     {number of entries in current table}
+    Freq         : Word;     {CurrentCode repeats in table every Freq entries}
+    CurrentCode  : Word;     {counter, current code}
+    a            : Word;     {counter for codes}
+    j            : Word;     {counter}
+    CurrentTable : pHuft;    {points to current table}
+    TempPHuft    : pHuft;    {temp table pointer}
+    p            : WordPtr;  {general word array pointer}
+    xp           : WordPtr;  {pointer into bit arrays}
+    TableEntry   : Huft;     {table entry for structure assignment}
+    BitLenCount  : array[0..iMaxCodeLen] of {$IFDEF VirtualPascal} SmallWord {$ELSE}
+                                                                   Word      {$ENDIF}; {bit length count table}
+    TableStack   : array[0..iMaxCodeLen-1] of pHuft;  {table stack}
+    BitLenValues : array[0..iMaxCodes-1] of {$IFDEF VirtualPascal} SmallWord {$ELSE} 
+                                                                   Word      {$ENDIF}; {values in order of bit lengths}
+    BitOffsets   : array[0..iMaxCodeLen] of {$IFDEF VirtualPascal} SmallWord {$ELSE}
+                                                                   Word      {$ENDIF}; {bit offsets, then code stack}
+    BaseValueList: CodeArray absolute D0;
+    ExtraBitList : CodeArray absolute E0;
+
+    procedure GenerateCounts;
+      {-Generate counts for each bit length}
+    var
+      i : Word;
+    begin
+      FillChar(BitLenCount, SizeOf(BitLenCount), #0);
+      p := CodeLength;
+      i := NumCodes;
+      repeat
+        Inc(BitLenCount[p^]);   {Assume all entries <= iMaxCodeLen}
+        IncPtr(p, SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+        Dec(i);
+      until (i = 0);
+    end;
+
+    procedure GetMinMaxLengths;
+      {-Find minimum and maximum length, and adjust LookupBits by those}
+    begin
+      BitsPerTable := LookupBits;
+
+      j := 0;
+      repeat
+        Inc(j);
+      until (BitLenCount[j] <> 0) or (j = iMaxCodeLen);
+      MinCodeLen := j;  {Minimum code length}
+
+      if {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}(BitsPerTable) < j then
+        BitsPerTable := j;
+
+      CurrentCode := iMaxCodeLen + 1;
+      repeat
+        Dec(CurrentCode);
+      until (BitLenCount[CurrentCode] <> 0) or (CurrentCode = 0);
+      MaxCodeLen := CurrentCode; {Maximum code length}
+
+      if {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}(BitsPerTable) > CurrentCode then
+        BitsPerTable := CurrentCode;
+
+      LookupBits := BitsPerTable;
+    end;
+
+    procedure MakeSortedTable;
+      {-Make a table of values in order of bit lengths}
+    var
+      i : Word;
+    begin
+      p := CodeLength;
+      i := 0;
+      repeat
+        j := p^;
+        IncPtr(p, SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+        if j <> 0 then begin
+          BitLenValues[BitOffsets[j]] := i;
+          Inc(BitOffsets[j]);
+        end;
+        Inc(i);
+      until (i >= NumCodes);
+    end;
+
+  begin
+    GenerateCounts;
+    {Initialize zero length codes}
+    if BitLenCount[0] = NumCodes then begin
+      t^ := nil;
+      LookupBits := 0;
+      Exit;
+    end;
+    GetMinMaxLengths;
+
+    {Adjust last length count to fill out codes, if needed}
+    CodesAdded := 1 shl j;
+    while j < CurrentCode do begin
+      CodesAdded := CodesAdded - BitLenCount[j];
+      if CodesAdded < 0 then begin
+        BuildHufTable := 2; {Bad input}
+        Exit;
+      end;
+      Inc(j);
+      CodesAdded := CodesAdded shl 1;
+    end;
+
+    CodesAdded := CodesAdded - BitLenCount[CurrentCode];
+    if CodesAdded < 0 then begin
+      BuildHufTable := 2;
+      Exit;
+    end;
+    BitLenCount[CurrentCode] := BitLenCount[CurrentCode] + CodesAdded;
+
+    {Generate starting offsets into the value table for each length}
+    BitOffsets[1] := 0;
+    j := 0;
+
+    p := @BitLenCount;
+    IncPtr(p, SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+    xp := @BitOffsets;
+    IncPtr(xp, 2 * SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+    Dec(CurrentCode);
+
+    while CurrentCode <> 0 do begin
+      Dec(CurrentCode);
+      j := j + p^;
+      xp^ := j;
+      IncPtr(p, SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+      IncPtr(xp, SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+    end;
+
+    MakeSortedTable;
+
+    {Generate the Huffman codes and for each, make the table entries}
+    BitOffsets[0] := 0;
+    CurrentCode := 0;                  {First Huffman code is zero}
+    p := @BitLenValues;                {Grab values in bit order}
+    Level := -1;                       {No tables yet--level -1}
+    PriorBits := - BitsPerTable;       {Bits decoded}
+
+    TableStack[0] := nil;
+    CurrentTable := nil;
+    NumEntries := 0;
+
+    {Go through the bit lengths}
+    while MinCodeLen <= MaxCodeLen do begin
+      a := BitLenCount[MinCodeLen];
+      while a <> 0 do begin
+        Dec(a);
+        {Make tables up to required level}
+        while MinCodeLen > PriorBits + BitsPerTable do begin
+          Inc(Level);
+          PriorBits := PriorBits + BitsPerTable;
+
+          {Compute minimum size table less than or equal to l bits}
+          NumEntries := MaxCodeLen - PriorBits;{Upper limit on table size}
+          if NumEntries > {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}(BitsPerTable) then
+              NumEntries := BitsPerTable;
+          j := MinCodeLen - PriorBits;
+          Freq := 1 shl j;
+          if Freq > a + 1 then begin   {Too few codes for bit table}
+            Freq := Freq - (a + 1);    {Deduct codes from patterns left}
+            xp := @BitLenCount;
+            IncPtr(xp, MinCodeLen * SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+            Inc(j);
+            while j < NumEntries do begin {Try smaller tables}
+              Freq := Freq shl 1;
+              IncPtr(xp, SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+              if Freq <= xp^ then
+                goto GotCodes;
+              Freq := Freq - xp^;      {Else deduct codes from patterns}
+              Inc(j);
+            end;
+  GotCodes:
+          end;
+          NumEntries := 1 shl j;  {Table entries for j-bit table}
+
+          {Allocate and link in new table}
+          if not GetMemCheck(CurrentTable,
+                 ((NumEntries + 1) * SizeOf(Huft)) + 2) then begin
+            FreeHufTable(TableStack[0]);
+            BuildHufTable := 3; {Not enough memory}
+            Exit;
+          end;
+
+          {Place size of allocated block into first location for FreeHufTable}
+          WordPtr(CurrentTable)^:= NumEntries + 1;
+          IncPtr(CurrentTable, SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+
+          t^ := CurrentTable;
+          IncPtr(t^, SizeOf(Huft)); {Link to list for FreeHufTable()}
+          t := @CurrentTable^.NextLevel;
+          t^:= nil;
+          IncPtr(CurrentTable, SizeOf(Huft));
+          TableStack[Level] := CurrentTable; {Table starts after link}
+
+          {Connect to last table, if there is one}
+          if Level <> 0 then begin
+            BitOffsets[Level] := CurrentCode;  {Save pattern for backing up}
+            TableEntry.NumBits := Byte(BitsPerTable); {Bits to dump before this table}
+            TableEntry.ExtraBits := Byte(16 + j); {Bits in this table}
+            TableEntry.NextLevel := CurrentTable; {Pointer to this table}
+            j := CurrentCode shr (PriorBits - BitsPerTable);
+            TempPHuft := TableStack[Level - 1];
+            IncPtr(TempPHuft, j * SizeOf(Huft));
+            TempPHuft^ := TableEntry;
+          end;
+        end;
+
+        {set up table entry}
+        TableEntry.NumBits := Byte(MinCodeLen - PriorBits);
+
+        if {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}(p) >=
+           {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}(@BitLenValues) + (NumCodes*2) then
+          TableEntry.ExtraBits := 99  {Out of values--invalid code}
+        else if p^ < NumSimpleCodes then begin
+          if p^ < 256 then
+            TableEntry.ExtraBits := 16
+          else
+            TableEntry.ExtraBits := 15;
+
+          TableEntry.N := p^;    {Simple code is just the value}
+          IncPtr(p, SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+        end else begin
+          {Non-simple--look up in lists}
+          TableEntry.ExtraBits := (ExtraBitList[p^ - NumSimpleCodes]);
+          TableEntry.N := BaseValueList[p^ - NumSimpleCodes];
+          IncPtr(p, SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+        end;
+
+        {Fill code-like entries}
+        Freq := 1 shl (MinCodeLen - PriorBits);
+        j := CurrentCode shr PriorBits;
+        while j < NumEntries do begin
+          TempPHuft := CurrentTable;
+          IncPtr(TempPHuft, j * SizeOf(Huft));
+          TempPHuft^ := TableEntry;
+          j := j + Freq;
+        end;
+
+        {Backwards increment}
+        j := 1 shl (MinCodeLen - 1);
+        while (CurrentCode and j) <> 0 do begin
+          CurrentCode := CurrentCode xor j;
+          j := j shr 1;
+        end;
+        CurrentCode := CurrentCode xor j;
+
+        {Backup over finished tables}
+        while (CurrentCode and ((1 shl PriorBits) - 1)) <>
+            BitOffsets[Level] do begin
+          Dec(Level);
+          PriorBits := PriorBits - BitsPerTable;
+        end;
+      end;
+      Inc(MinCodeLen);
+    end;
+
+    {Return (1) if we were given an incomplete table}
+    if (CodesAdded <> 0) and (MaxCodeLen <> 1) then
+      BuildHufTable := 1
+    else
+      BuildHufTable := 0;
+  end;
+
+  function InflateCodes(tl, td: pHuft; bl, bd: Integer) : Boolean;
+    {-Inflate (decompress) the codes in a deflated (compressed) block.
+     Return True if all goes ok.}
+    {tl, td   literal/length and distance decoder tables}
+    {bl, bd   number of bits decoded by tl[] and td[]}
+  var
+    e    : Word;                       {Table entry flag/number of extra bits}
+    n,d  : Word;                       {Length and index for copy}
+    w    : Word;                       {Current window position}
+    t    : pHuft;                      {Pointer to table entry}
+    ml,md: LongInt;                    {Masks for bl and bd bits}
+
+    procedure DecodeTree;
+      {-Decode lengths}
+    begin
+      e := t^.ExtraBits;
+      if e > 16 then
+        repeat
+          if e = 99 then Exit;
+          DumpBits(t^.NumBits);
+          Dec(e, 16);
+          NeedBits(e);
+          t := t^.NextLevel;
+          IncPtr(t, (dBitStrBuf and MaskBits[e]) * SizeOf(Huft));
+          e := t^.ExtraBits;
+        until (e <= 16) or (ArchiveStatus <> ecOk);
+      DumpBits(t^.NumBits);
+    end;
+
+  begin
+    InflateCodes := False;
+    w := iSlidePos;                    {Initialize window position}
+
+    {Inflate the coded data}
+    ml := MaskBits[bl];                {Precompute masks for speed}
+    md := MaskBits[bd];
+
+    while (ArchiveStatus = ecOk) and(not InEof) do begin               {!!.02}
+      NeedBits(Byte(bl));
+      t := tl;
+      IncPtr(t, {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}(dBitStrBuf and ml) * SizeOf(Huft));
+      DecodeTree;  {decode lengths}
+
+      if e = 16 then begin             {Then it's a literal}
+        iSlide^[w] := Byte(t^.N);
+        WriteByte(Byte(t^.N));
+        Inc(w);
+        if w = iWindowSize then
+          w := 0;
+      end else begin                   {It's an EOB or a length}
+        {Exit if end of block}
+        if e = 15 then begin
+          iSlidePos := w;              {Set global window position}
+          InflateCodes := True;
+          Exit;
+        end;
+
+        {Get length of block to copy}
+        NeedBits(e);
+        n := t^.N + (dBitStrBuf and MaskBits[e]);
+        DumpBits(e);
+
+        NeedBits(Byte(bd));
+        t := td;
+        IncPtr(t, (dBitStrBuf and md) * SizeOf(Huft));
+        DecodeTree;  {Decode distance of block to copy}
+
+        NeedBits(e);
+        d := w - t^.N - (dBitStrBuf and MaskBits[e]);
+        DumpBits(e);
+
+        {Do the copy}
+        repeat
+          d := d and {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}(iWindowSize - 1);
+          if d > w then
+            e := {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}(iWindowSize - d)
+          else
+            e := {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}(iWindowSize) - w;
+          if e > n then
+            e := n;
+          Dec(n, e);
+          repeat
+            iSlide^[w] := iSlide^[d];
+            WriteByte(iSlide^[d]);
+            Inc(w);
+            Inc(d);
+            Dec(e);
+          until (e = 0) or (ArchiveStatus <> ecOk);
+
+          if w = iWindowSize then
+            w := 0;
+        until (n = 0) or (ArchiveStatus <> ecOk);
+      end;
+    end;
+
+    iSlidePos := w;                    {Set global window position}
+    InflateCodes := True;
+  end;
+
+  function InflateStored: Boolean;
+    {-Decompress an inflated type 0 (stored) block}
+  var
+    n : Word;                          {Number of bytes in block}
+    w : Word;                          {Current window position}
+
+  begin
+    InflateStored := False;
+
+    {Make local copies of globals}
+    w := iSlidePos;                    {Initialize window position}
+
+    {Go to byte boundary}
+    n := BitSValid and 7;
+    DumpBits(n);
+
+    {Get the length and its complement}
+    NeedBits(16);
+    n := dBitStrBuf;
+    DumpBits(16);
+
+    NeedBits(16);
+    if n <> (not dBitStrBuf) then
+      Exit;                            {Error in compressed data}
+
+    DumpBits(16);
+
+    {Read and output the compressed data}
+    while (n <> 0) and (ArchiveStatus = ecOk) do begin
+      Dec(n);
+      NeedBits(8);
+      iSlide^[w] := Byte(dBitStrBuf);
+      WriteByte(Byte(dBitStrBuf));
+      Inc(w);
+      if w = iWindowSize then
+        w := 0;
+      DumpBits(8);
+    end;
+
+    {Restore the globals}
+    iSlidePos := w;                    {Set global window position}
+    InflateStored := True;
+  end;
+
+  function InflateFixed: Boolean;
+    {-Decompress an inflated type 1 (fixed Huffman codes) block.}
+  const
+    ListSize = 287+1;                  {Elements in LenList}
+  var
+    i        : Integer;                {Temporary variable}
+    bl       : Integer;                {Lookup bits for tl}
+    bd       : Integer;                {Lookup bits for td}
+    tl       : pHuft;                  {Literal/length code table}
+    td       : pHuft;                  {Distance code table}
+    LenList  : WordArrayPtr;           {Length list for BuildHufTable}
+  begin
+    InflateFixed := False;
+
+    {Allocate the length list array}
+    if not GetMemCheck(LenList, ListSize * SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF})) then begin
+      ArchiveStatus := epFatal + ecOutOfMemory;
+      Exit;
+    end;
+
+    {Set up literal table}
+    for i :=   0 to 143 do LenList^[i] := 8;
+    for i := 144 to 255 do LenList^[i] := 9;
+    for i := 256 to 279 do LenList^[i] := 7;
+    for i := 280 to 287 do LenList^[i] := 8;
+
+    bl := 7;
+    i := BuildHufTable(@LenList^, 288, 257, CopyLengths, ExtraLitLenBits, @tl, bl);
+    if i <> 0 then begin
+      FreeMemCheck(LenList, ListSize * SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+      Exit;
+    end;
+
+    {Set up distance table}
+    for i := 0 to 29 do
+      LenList^[i] := 5;                      {Make an incomplete code set}
+
+    bd := 5;
+    i := BuildHufTable(@LenList^, 30, 0, CopyOffsets, ExtraDistBits, @td, bd);
+    if i > 1 then begin
+      FreeHufTable(tl);
+      FreeMemCheck(LenList, ListSize * SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+      Exit;
+    end;
+
+    {Decompress until an end-of-block code}
+    InflateFixed := InflateCodes(tl, td, bl, bd);
+
+    {Free the decoding tables}
+    FreeHufTable(tl);
+    FreeHufTable(td);
+
+    {Free the length list}
+    FreeMemCheck(LenList, ListSize * SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+  end;
+
+  function InflateDynamic: Boolean;
+    {-Decompress an inflated type 2 (dynamic Huffman codes) block}
+  const
+    LenDistSize = 285+30+1;      {Elements in LenDist}
+  var
+    i  : Integer;
+    bl : Integer;                {Lookup bits for tl}
+    bd : Integer;                {Lookup bits for td}
+    j  : Word;
+    l  : Word;                   {Last length}
+    m  : Word;                   {Mask for bit lengths table}
+    n  : Word;                   {Number of lengths to get}
+    nb : Word;                   {Number of bit length codes}
+    nl : Word;                   {Number of literal/length codes}
+    nd : Word;                   {Number of distance codes}
+    tl : pHuft;                  {Literal/length code table}
+    td : pHuft;                  {Distance code table}
+    LenDist : WordArrayPtr;      {Literal/length and distance code lengths}
+
+    procedure FillLenDist(var Index : Integer; var Count : Word; Value : Word);
+    begin
+      while Count <> 0 do begin
+        Dec(Count);
+        LenDist^[Index] := Value;
+        Inc(Index);
+      end;
+    end;
+
+  begin
+    InflateDynamic := False;
+
+    {Allocate the length and distance array}
+    if not GetMemCheck(LenDist, LenDistSize * SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF})) then begin
+      ArchiveStatus := epFatal + ecOutOfMemory;
+      Exit;
+    end;
+
+    {Read table lengths}
+    NeedBits(5);
+    nl := 257 + (dBitStrBuf and $1F);   {Number of literal/length codes}
+    DumpBits(5);
+
+    NeedBits(5);
+    nd := 1 + (dBitStrBuf and $1F);     {Number of distance codes}
+    DumpBits(5);
+
+    NeedBits(4);
+    nb := 4 + (dBitStrBuf and $0F);     {Number of bit length codes}
+    DumpBits(4);
+
+    if (nl > 286) or (nd > 30) or (ArchiveStatus <> ecOk) then begin
+      FreeMemCheck(LenDist, LenDistSize * SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+      Exit;  {Bad lengths}
+    end;
+
+    {Read bit-length-code lengths}
+    for j := 0 to nb-1 do begin
+      NeedBits(3);
+      LenDist^[BitLenOrder[j]] := dBitStrBuf and 7;
+      DumpBits(3);
+    end;
+
+    for j := nb to 18 do
+      LenDist^[BitLenOrder[j]] := 0;
+
+    {Build decoding table for trees--single level, 7 bit lookup}
+    bl := 7;
+    i := BuildHufTable(@LenDist^, 19, 19, CopyLengths, ExtraLitLenBits, @tl, bl);
+    if i <> 0 then begin
+      if i = 1 then
+        FreeHufTable(tl);
+      FreeMemCheck(LenDist, LenDistSize * SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+      Exit;  {Incomplete code set}
+    end;
+
+    {Read literal and distance code lengths}
+    n := nl + nd;
+    m := MaskBits[bl];
+    i := 0;
+    l := 0;
+    while (i < n) and (ArchiveStatus = ecOk) do begin
+      NeedBits(Byte(bl));
+      td := tl;
+      IncPtr(td, (dBitStrBuf and m) * SizeOf(Huft));
+      j := td^.NumBits;
+      DumpBits(j);
+      j := td^.N;
+      if j < 16 then begin             {Length of code in bits (0..15)}
+        l := j;
+        LenDist^[i] := l;              {Save last length in l}
+        Inc(i);
+      end else
+        if j = 16 then begin           {Repeat last length 3 to 6 times}
+          NeedBits(2);
+          j := 3 + (dBitStrBuf and 3);
+          DumpBits(2);
+          if i + j > n then begin
+            FreeMemCheck(LenDist, LenDistSize * SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+            Exit;
+          end;
+
+          FillLenDist(i, j, l);
+        end else if j = 17 then begin  {3 to 10 zero length codes}
+          NeedBits(3);
+          j := 3 + (dBitStrBuf and 7);
+          DumpBits(3);
+          if (i + j > n) then begin
+            FreeMemCheck(LenDist, LenDistSize * SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+            Exit;
+          end;
+
+          FillLenDist(i, j, 0);
+          l := 0;
+        end else begin                 {j = 18: 11 to 138 zero length codes}
+          NeedBits(7);
+          j := 11 + (dBitStrBuf and $7F);
+          DumpBits(7);
+          if i + j > n then begin
+            FreeMemCheck(LenDist, LenDistSize * SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+            Exit;
+          end;
+
+          FillLenDist(i, j, 0);
+          l := 0;
+        end;
+    end;
+
+    {Free decoding table for trees}
+    FreeHufTable(tl);
+
+    {Build the decoding tables for literal/length and distance codes}
+    bl := 9;  {Bits in base literal/length lookup table}
+    i := BuildHufTable(@LenDist^, nl, 257, CopyLengths, ExtraLitLenBits, @tl, bl);
+    if i <> 0 then begin
+      if i = 1 then
+        FreeHufTable(tl);
+      FreeMemCheck(LenDist, LenDistSize * SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+      Exit;  {Incomplete code set}
+    end;
+
+    bd := 6;  {Bits in base distance lookup table}
+    i := BuildHufTable(@LenDist^[nl], nd, 0, CopyOffsets, ExtraDistBits, @td, bd);
+    if i <> 0 then begin
+      if i = 1 then
+        FreeHufTable(td);
+      FreeHufTable(tl);
+      FreeMemCheck(LenDist, LenDistSize * SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+      Exit;  {Incomplete code set}
+    end;
+
+    {Decompress until an end-of-block code}
+    InflateDynamic := InflateCodes(tl, td, bl, bd);
+
+    {Free the decoding tables}
+    FreeHufTable(tl);
+    FreeHufTable(td);
+
+    {Free the length and distance array}
+    FreeMemCheck(LenDist, LenDistSize * SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+  end;
+
+  function InflateBlock (var E : Integer) : Boolean;
+    {-Decompress an inflated block}
+  var
+    BlockType      : Word;             {Block type}
+  begin
+    {bit zero is set if this is the last block}
+    NeedBits(1);
+    {Return non-zero to indicate that the last block was processed}
+    E := Integer(dBitStrBuf) and 1;
+    DumpBits(1);
+
+    {Read in block type}
+    NeedBits(2);
+    BlockType := dBitStrBuf and 3;
+    DumpBits(2);
+
+    if ArchiveStatus <> ecOk then Exit;
+
+    {Inflate that block type}
+    case BlockType of
+      0 : InflateBlock := InflateStored;
+      1 : InflateBlock := InflateFixed;
+      2 : InflateBlock := InflateDynamic;
+    else
+      InflateBlock := False;           {Bad block type}
+    end;
+  end;
+
+  procedure InflateFile;
+    {-Decompress an inflated entry}
+  var
+    LastBlockFlag  : Integer;          {Last block flag}
+  begin
+    if not GetMemCheck(iSlide, SizeOf(iSlideType)) then begin
+      ArchiveStatus := epFatal + ecOutOfMemory;
+      Exit;
+    end;
+    FillChar(iSlide^, SizeOf(iSlideType), #0);
+
+    {Initialize window, bit buffer, ...}
+    iSlidePos := 0;
+    dBitStrBuf := 0;
+    BitSValid:= 0;
+    CurByte := 0;
+    iOverflowBuf := 0;
+
+    {Decompress until the last block}
+    repeat
+      if not InflateBlock(LastBlockFlag) then
+        ArchiveStatus := epFatal + ecBadFileFormat;
+    until (LastBlockFlag <> 0) or (ArchiveStatus <> ecOk);
+
+    FreeMemCheck(iSlide, SizeOf(iSlideType));
+  end;
+
+ {--------File Deflate ------------------------------------}
+
+  function dReadBuf(var Buffer; Size : Word) : Word;
+    {-Read Size bytes from the input stream}
+  var
+    BytesRead : Word;
+  begin
+    dReadBuf := 0;                                                     {!!.02}
+    BlockRead(InFile, Buffer, Size, BytesRead);
+    ArchiveStatus := IoResult;
+    if ArchiveStatus <> 0 then Exit;
+    if ShowProg then begin
+      Inc(TotalBytesRead, BytesRead);
+      if not glSPF(TotalBytesRead, TotalBytesToRead) then begin
+        ArchiveStatus := ecUserAbort;
+        Exit;
+      end;
+    end;
+
+    {Eof if no more bytes read}
+    InEof := BytesRead = 0;
+    if not InEof then
+      {Update CRC for this block}
+      UpdateCRC(CRC, Buffer, BytesRead);
+    dReadBuf := BytesRead;
+  end;
+
+  procedure SetFileType;
+    {Set the file type to ASCII or BINARY: Binary if more than 20%
+     of the bytes are <= 6 or >= 128, ascii otherwise}
+  var
+    n          : Integer;
+    AsciiFreq  : Word;
+    BinFreq    : Word;
+  begin
+    AsciiFreq := 0;
+    BinFreq   := 0;
+
+    n := 0;
+    while n < 7 do begin
+      Inc(BinFreq, dDynamicLitTree^[n].FC.Freq);
+      Inc(n);
+    end;
+    while n < 128 do begin
+      Inc(AsciiFreq, dDynamicLitTree^[n].FC.Freq);
+      Inc(n);
+    end;
+    while n < dNumLiterals do begin
+      Inc(BinFreq, dDynamicLitTree^[n].FC.Freq);
+      Inc(n);
+    end;
+
+    if BinFreq > (AsciiFreq shr 2) then
+      dTypeOfFile := Binary
+    else
+      dTypeOfFile := Ascii;
+
+    {Set global file type flag}
+    FileIsText := dTypeOfFile = Ascii;
+  end;
+
+  procedure InitBlock;
+    {-Initialize a new block}
+  var
+    n : Integer;  {iterates over tree elements}
+  begin
+    {Initialize the dynamic and bit-length trees}
+    for n := 0 to dNumLitCodes - 1 do
+      dDynamicLitTree^[n].FC.Freq := 0;
+    for n := 0 to dNumDistCodes - 1 do
+      dDynamicDistTree^[n].FC.Freq := 0;
+    for n := 0 to dNumBitLenCodes - 1 do
+      dBitLenTree^[n].FC.Freq := 0;
+    dDynamicLitTree^[dEndOfBlockCode].FC.Freq := 1;
+
+    dOptimalLen := 0;
+    dStaticLen := 0;
+    dLastLit := 0;
+    dLastDist := 0;
+    dLastFlags := 0;
+    dFlags := 0;
+    dFlagBit := 1;
+  end;
+
+  function dBitReverse(Code, Len : Word) : Word; assembler;
+    {-Reverse Len bits of Code}
+  {&FRAME-} {&USES ebx} {&ALTERS ecx}
+  asm
+  {$IFDEF VirtualPascal}
+    mov  ecx,Len  {get loop count}
+    xor  eax,eax   {result := 0}
+    mov  ebx, Code
+  @@1:
+    shr  ebx,1    {move low bit to carry}
+    rcl  eax,1    {shift left with carry}
+    loop @@1      {reduce bit count and repeat until zero}
+  {$ELSE}
+    mov  cx,Len   {get loop count}
+    xor  ax,ax    {result := 0}
+    mov  bx, Code
+  @@1:
+    shr  bx,1     {move low bit to carry}
+    rcl  ax,1     {shift left with carry}
+    loop @@1      {reduce bit count and repeat until zero}
+  {$ENDIF}
+  end;           {ax has result} {&SAVES ebx,esi,edi}
+
+  procedure dGenerateCodes(Tree : CTDataArrayPtr; MaxCode : Integer);
+    {-Generate the codes for a given tree and bit counts. Tree is the
+    tree to fill MaxCode is the largest code with non zero frequency}
+  var
+    Code     : Word;           {Running code value}
+    Bits     : Integer;        {Bit index}
+    n        : Integer;        {Code index}
+    Len      : Integer;        {Current code length}
+    {Next code value for each bit length}
+    NextCode : array[1..dMaxCodeBits] of Word;
+  begin
+    Code := 0;
+   {The distribution counts are used to generate the code values}
+    for Bits := 1 to dMaxCodeBits do begin
+      Code := (Code + dBitLenCount^[Bits-1]) shl 1;
+      NextCode[Bits] := Code;  {without bit reversal}
+    end;
+
+    {Create the codes}
+    for n := 0 to MaxCode do begin
+      Len := Tree^[n].DL.Len;
+      if Len <> 0 then begin {Reverse the bits}
+        Tree^[n].FC.Code := dBitReverse(NextCode[Len], Len);
+        Inc(NextCode[len]);
+      end;
+    end;
+  end;
+
+  procedure InitDesc;
+    {-Initialize the Desc structure}
+  begin
+    with dLitTreeDescription do begin
+      DynamicTree := dDynamicLitTree;
+      StaticTree  := dStaticLitTree;
+      ExtraBits   := @ExtraLitLenBits;
+      ExtraBase   := dNumLiterals + 1;
+      MaxElements := dNumLitCodes;
+      MaxLength   := dMaxCodeBits;
+      MaxCode     := 0;
+    end;
+    with dDistTreeDescription do begin
+      DynamicTree := dDynamicDistTree;
+      StaticTree  := dStaticDistTree;
+      ExtraBits   := @ExtraDistBits;
+      ExtraBase   := 0;
+      MaxElements := dNumDistCodes;
+      MaxLength   := dMaxCodeBits;
+      MaxCode     := 0;
+    end;
+    with dBitLenTreeDescription do begin
+      DynamicTree := dBitLenTree;
+      StaticTree  := nil;
+      ExtraBits   := @ExtraBitLenBits;
+      ExtraBase   := 0;
+      MaxElements := dNumBitLenCodes;
+      MaxLength   := 7;   {Bit length codes must not exceed this value}
+      MaxCode     := 0;
+    end;
+  end;
+
+  procedure CodeTreeInit;
+    {-Initialize the various tables and save the location of the
+     internal file attribute (ascii/binary) and method (DEFLATE/STORE)}
+  var
+    n      : Integer;  {iterates over tree elements}
+    Bits   : Integer;  {bit counter}
+    Length : Integer;  {length value}
+    Code   : Integer;  {code value}
+    Dist   : Integer;  {distance index}
+  begin
+    dCompressedLen := 0;
+
+    InitDesc;
+
+    if dStaticDistTree^[0].DL.Len <> 0 then
+      Exit;  {CodeTreeInit already called}
+
+    {Initialize the mapping length (0..255) -> length code (0..28)}
+    Length := 0;
+    for Code := 0 to dLengthCodes - 2 do begin
+      dBaseLength^[Code] := Length;
+      for n := 0 to (1 shl ExtraLitLenBits[code]) - 1 do begin
+        dLengthCode^[Length] := Lo(Code);
+        Inc(Length);
+      end;
+    end;
+
+    {Note: The length 255 (match length 258) can be represented
+     in two different ways: code 284 + 5 bits or code 285, so we
+     overwrite dLengthCode[255] to use the best encoding}
+
+    dLengthCode^[255] := dLengthCodes - 1;
+
+    {Initialize the mapping dist (0..32K) -> dist code (0..29)}
+    Dist := 0;
+    for Code := 0 to 15 do begin
+      dBaseDist^[Code] := Dist;
+      for n := 0 to (1 shl ExtraDistBits[code]) - 1 do begin
+        dDistCode^[Dist] := Lo(Code);
+        Inc(Dist);
+      end;
+    end;
+
+    Dist := Dist shr 7; {from now on, all distances are divided by 128}
+    for Code := 16 to dNumDistCodes - 1 do begin
+      dBaseDist^[Code] := Dist shl 7;
+      for n := 0 to (1 shl (ExtraDistBits[code]-7)) - 1 do begin
+        dDistCode^[256 + Dist] := Lo(Code);
+        Inc(Dist);
+      end;
+    end;
+
+    {Construct the codes of the static literal tree}
+    for Bits := 0 to dMaxCodeBits do
+      dBitLenCount^[Bits] := 0;
+
+    for n := 0 to 143 do begin
+      dStaticLitTree^[n].DL.Len := 8;
+      Inc(dBitLenCount^[8]);
+    end;
+    for n := 144 to 255 do begin
+      dStaticLitTree^[n].DL.Len := 9;
+      Inc(dBitLenCount^[9]);
+    end;
+    for n := 256 to 279 do begin
+      dStaticLitTree^[n].DL.Len := 7;
+      Inc(dBitLenCount^[7]);
+    end;
+    for n := 280 to 287 do begin
+      dStaticLitTree^[n].DL.Len := 8;
+      Inc(dBitLenCount^[8]);
+    end;
+    {Codes 286 and 287 do not exist, but we must include them in the
+     tree construction to get a canonical Huffman tree (longest code
+     all ones}
+
+    dGenerateCodes(dStaticLitTree, dNumLitCodes + 1);
+
+    {The static distance tree}
+    for n := 0 to dNumDistCodes - 1 do begin
+      dStaticDistTree^[n].DL.Len := 5;
+      dStaticDistTree^[n].FC.Code := dBitReverse(n, 5);
+    end;
+
+    {Initialize the first block}
+    InitBlock;
+  end;
+
+  procedure dFillWindow;
+    {-Fill the window when the look ahead becomes insufficient}
+    {Updates dStrStart and dLookAhead}
+  var
+    n, m : Word;
+    More : Word;
+  begin
+    {Amount of free space at the end of the window}
+    More := LongInt(2) * dWindowSize - dLookAhead - dStrStart;
+
+    {If the window is full, move the upper half to the lower one to make
+     room in the upper half}
+    if More = LongInt(2) * dWindowSize - 1 then
+       {Very unlikely, but possible if dStrStart = 0 and dLookAhead = 1}
+      Dec(More)
+    else if (More <= 1) then begin
+      {the window is not empty so we can't confuse more = 0 with more = 64K}
+      Move(dWindow^[dWindowSize], dWindow^[0], dWindowSize);
+      Dec(dMatchStart, dWindowSize);
+      Dec(dStrStart, dWindowSize);
+      {now have dStrStart >= dMaxDistance}
+
+      Dec(dBlockStart, dWindowSize);
+
+      for n := 0 to dHashSize - 1 do begin
+        m := dNext^[n];
+        if m >= dWindowSize then
+          dNext^[n] := m - dWindowSize
+        else
+          dNext^[n] := 0;
+      end;
+
+      for n := 0 to dWindowSize - 1 do begin
+        m := dPrev^[n];
+        if m >= dWindowSize then
+          dPrev^[n] := m - dWindowSize
+        else
+          dPrev^[n] := 0;
+      end;
+      Inc(More, dWindowSize);
+    end;
+
+    {At this point, more is >= 2}
+    n := dReadBuf(dWindow^[dStrStart + dLookAhead], More);
+    if ArchiveStatus <> ecOk then Exit;
+
+    Inc(dLookAhead, n);
+  end;
+
+  procedure LongestMatchInit(PackLevel : Integer; var Flags : Integer);
+     {-Initialize the "longest match" routines for a new file}
+     {PackLevel:  1 best speed, 9 best compression }
+     {    Flags:  from the general purpose bit flag}
+  var
+    j : Word;
+  begin
+    if (PackLevel < 1) or (PackLevel > 9) then begin
+      {Force valid pack level}
+      PackLevel := 5;
+    end;
+
+    {Initialize the hash table}
+    for j := 0 to dHashSize - 1 do
+      dNext^[j] := 0;
+    {dPrev will be initialized on the fly}
+
+    {Set the default configuration parameters}
+    {based on value of passed PackLevel}
+    with ConfigTable[PackLevel] do begin
+      dMaxLazyMatch   := MaxLazy;
+      dGoodMatch      := GoodLen;
+      dMaxChainLength := MaxChain;
+      Flags           := Flags or BitFlag;
+    end;
+
+    dStrStart := 0;
+    dBlockStart := 0;
+
+    dLookAhead := dReadBuf(dWindow^[0], dWindowSize);
+    if (ArchiveStatus <> ecOk) or InEof then Exit;
+
+    {Make sure that we always have enough look ahead}
+    while (dLookAhead < dMinLookAhead) and (not InEof) and
+          (ArchiveStatus = ecOk) do dFillWindow;
+    if ArchiveStatus <> ecOk then Exit;
+
+    dHashIndex := 0;
+    for j := 0 to dMinMatchLen - 2 do
+      dHashIndex :=
+        ((dHashIndex shl dHashShift) xor dWindow^[j]) and dHashMask;
+  end;
+
+  function dMax(Var1, Var2: Integer): Integer;
+    {-Return the maximum of two values}
+  begin
+    if (Var2 > Var1) then
+      dMax := Var2
+    else
+      dMax := Var1;
+  end;
+
+  function dLongestMatch(CurrentMatch : Word) : Word; assembler;
+  {&FRAME-} {&USES ebx,esi,edi}
+    {-Set dMatchStart to the longest match starting at the
+     given string and return its length. Matches shorter or
+     equal to dPrevLength are discarded}
+  var
+    ChainLength : Word;     {max hash chain length}
+    BestLen     : Word;     {best match length so far}
+    Limit       : Word;
+    ScanPos     : Word;     {Current string}
+    MatchPos    : Word;     {Matched string}
+    ScanStart   : Word;     {Scan start value}
+    ScanEnd     : Word;     {Scan end value}
+  asm
+  {$IFDEF VirtualPascal}
+    xor   eax,eax
+    mov   dMatchStart,eax       {dMatchStart = 0}
+
+    mov   Limit,eax             {Limit = 0}
+    mov   eax,dStrStart
+    mov   ScanPos,eax           {ScanPos = dStrStart}
+    cmp   eax,dMaxDistance
+    jbe   @@001                 {if dStrStart > dMaxDistance}
+    sub   eax,dMaxDistance
+    mov   Limit,eax             {Limit = dStrStart - dMaxDistance}
+  @@001:
+
+    mov   eax,dPrevLength
+    mov   BestLen,eax           {BestLen = dPrevLength}
+    mov   edx,dMaxChainLength
+    cmp   eax,dGoodMatch        {Reduce chain length if current match}
+    jb    @@002                 {is at least dGoodMatch length}
+    mov   cl,2
+    shr   edx,cl                {ChainLength div 4}
+  @@002:
+    mov   ChainLength,edx
+
+    mov   edi,dWindow           {Setup sentinal start and}
+    add   edi,ScanPos           {end values}
+    movzx eax,word ptr [edi]
+    mov   ScanStart,eax
+    dec   edi
+    add   edi,BestLen           {ScanEnd is byte at end of the}
+    movzx eax,word ptr [edi]    {matched string plus one new byte}
+    mov   ScanEnd, eax
+
+  @@SearchLoop:
+    mov   eax, CurrentMatch
+    mov   MatchPos,eax          {MatchPos = CurrentMatch}
+
+    mov   edi,dWindow           {Skip to next match if the match}
+    add   edi,MatchPos          {length cannot increase or if the}
+    movzx eax,word ptr [edi]    {match length is less than 2}
+    cmp   eax,ScanStart
+    jne   @@NextMatch
+    dec   edi
+    add   edi,BestLen
+    movzx eax,word ptr [edi]
+    cmp   eax,ScanEnd
+    jne   @@NextMatch
+
+    {Get the length of the current match}
+    mov   edi,dWindow           {es:di = dWindow[]}
+    add   edi,ScanPos           {dWindow[ScanPos]}
+    mov   esi,dWindow           {ds:si = dWindow[]}
+    add   esi,MatchPos          {dWindow[MatchPos]}
+    mov   eax,dMaxMatchLen      {ax = max distance to scan}
+    mov   ecx,eax               {max length to search}
+    shr   ecx,1                 {adjust for word count}
+    cld                         {go forward}
+    repe  cmpsw                 {loop until mismatch}
+    je    @@003                 {matched all bytes}
+    inc   ecx                   {adjust for last loop iteration}
+    shl   ecx,1                 {change back to bytes}
+    sub   eax,ecx               {calculate match length}
+    mov   cl,[edi-2]            {mismatch on first or second byte?}
+    sub   cl,[esi-2]            {cl = 0 if first bytes equal}
+    sub   cl,1                  {set carry if cl = 0}
+    adc   eax,0                 {ax = ax + carry}
+  @@003:
+
+    cmp   eax,BestLen           {Is this match better than the current one?}
+    jbe   @@NextMatch           {if not, keep looking}
+    mov   BestLen,eax           {If so, make it the current match}
+    mov   ebx,CurrentMatch
+    mov   dMatchStart,ebx
+    cmp   eax,dMaxMatchLen      {Can the length increase?}
+    jnb   @@LoopExit            {If not, we're done}
+
+    mov   edi,dWindow           {Get new ending sentinal value}
+    add   edi,ScanPos           {into ScanEnd}
+    dec   edi
+    add   edi,eax               {di=di + BestLen}
+    movzx eax,word ptr [edi]
+    mov   ScanEnd,eax           {ScanEnd is now new sentinal value}
+
+  @@NextMatch:
+    sub   ChainLength,1         {Reduce loop ChainLength}
+
+    mov   edi,dPrev             {Get next match position to check}
+    mov   eax,CurrentMatch
+    and   eax,dWindowMask
+    shl   eax,1                 {adjust for word access}
+    add   edi,eax
+    movzx eax,word ptr [edi]
+    mov   CurrentMatch,eax
+
+    cmp   ChainLength,1         {If ChainLength is zero}
+    jb    @@LoopExit            {we're done, or}
+    mov   eax,CurrentMatch      {If the current match position is}
+    cmp   eax,Limit             {equal to our computed limit}
+    jbe   @@LoopExit            {we're done}
+    jmp   @@SearchLoop          {Else, go back and keep searching}
+
+  @@LoopExit:
+    mov   eax, BestLen           {Return value in ax}
+  {$ELSE}
+    xor   ax,ax
+    mov   dMatchStart,ax        {dMatchStart = 0}
+
+    mov   Limit,ax              {Limit = 0}
+    mov   ax,dStrStart
+    mov   ScanPos,ax            {ScanPos = dStrStart}
+    cmp   ax,dMaxDistance
+    jbe   @@001                 {if dStrStart > dMaxDistance}
+    sub   ax,dMaxDistance
+    mov   Limit,ax              {Limit = dStrStart - dMaxDistance}
+  @@001:
+
+    mov   ax,dPrevLength
+    mov   BestLen,ax            {BestLen = dPrevLength}
+    mov   dx,dMaxChainLength
+    cmp   ax,dGoodMatch         {Reduce chain length if current match}
+    jb    @@002                 {is at least dGoodMatch length}
+    mov   cl,2
+    shr   dx,cl                 {ChainLength div 4}
+  @@002:
+    mov   ChainLength,dx
+
+    les   di,dWindow            {Setup sentinal start and}
+    add   di,ScanPos            {end values}
+    mov   ax,es:[di]
+    mov   ScanStart,ax
+    dec   di
+    add   di,BestLen            {ScanEnd is byte at end of the}
+    mov   ax,es:[di]            {matched string plus one new byte}
+    mov   ScanEnd, ax
+
+  @@SearchLoop:
+    mov   ax, CurrentMatch
+    mov   MatchPos,ax           {MatchPos = CurrentMatch}
+
+    les   di,dWindow            {Skip to next match if the match}
+    add   di,MatchPos           {length cannot increase or if the}
+    mov   ax,es:[di]            {match length is less than 2}
+    cmp   ax,ScanStart
+    jne   @@NextMatch
+    dec   di
+    add   di,BestLen
+    mov   ax,es:[di]
+    cmp   ax,ScanEnd
+    jne   @@NextMatch
+
+    {Get the length of the current match}
+    mov   dx,ds                 {save DS}
+    les   di,dWindow            {es:di = dWindow[]}
+    add   di,ScanPos            {dWindow[ScanPos]}
+    lds   si,dWindow            {ds:si = dWindow[]}
+    add   si,MatchPos           {dWindow[MatchPos]}
+    mov   ax,dMaxMatchLen       {ax = max distance to scan}
+    mov   cx,ax                 {max length to search}
+    shr   cx,1                  {adjust for word count}
+    cld                         {go forward}
+    repe  cmpsw                 {loop until mismatch}
+    je    @@003                 {matched all bytes}
+    inc   cx                    {adjust for last loop iteration}
+    shl   cx,1                  {change back to bytes}
+    sub   ax,cx                 {calculate match length}
+    mov   cl,es:[di-2]          {mismatch on first or second byte?}
+    sub   cl,ds:[si-2]          {cl = 0 if first bytes equal}
+    sub   cl,1                  {set carry if cl = 0}
+    adc   ax,0                  {ax = ax + carry}
+  @@003:
+    mov   ds,dx                 {restore DS}
+
+    cmp   ax,BestLen            {Is this match better than the current one?}
+    jbe   @@NextMatch           {if not, keep looking}
+    mov   BestLen,ax            {If so, make it the current match}
+    mov   bx,CurrentMatch
+    mov   dMatchStart,bx
+    cmp   ax,dMaxMatchLen       {Can the length increase?}
+    jnb   @@LoopExit            {If not, we're done}
+
+    les   di,dWindow            {Get new ending sentinal value}
+    add   di,ScanPos            {into ScanEnd}
+    dec   di
+    add   di,ax                 {di=di + BestLen}
+    mov   ax,es:[di]
+    mov   ScanEnd,ax            {ScanEnd is now new sentinal value}
+
+  @@NextMatch:
+    sub   ChainLength,1         {Reduce loop ChainLength}
+
+    les   di,dPrev              {Get next match position to check}
+    mov   ax,CurrentMatch
+    and   ax,dWindowMask
+    shl   ax,1                  {adjust for word access}
+    add   di,ax
+    mov   ax,es:[di]
+    mov   CurrentMatch,ax
+
+    cmp   ChainLength,1         {If ChainLength is zero}
+    jb    @@LoopExit            {we're done, or}
+    mov   ax,CurrentMatch       {If the current match position is}
+    cmp   ax,Limit              {equal to our computed limit}
+    jbe   @@LoopExit            {we're done}
+    jmp   @@SearchLoop          {Else, go back and keep searching}
+
+  @@LoopExit:
+    mov   ax, BestLen           {Return value in ax}
+  {$ENDIF}
+  end;
+
+  function DistToDistCode(Dist : Integer) : Byte;
+    {-Mapping from a distance to a distance code. Dist is the distance - 1}
+    {dDistCode[256] and dDistCode[257] are never used}
+  begin
+    if Dist < 256 then
+      DistToDistCode := dDistCode^[Dist]
+    else
+      DistToDistCode := dDistCode^[256+(Dist shr 7)];
+  end;
+
+  function dCodeTreeTally(Dist : Integer; LC : Integer) : Boolean;
+    {-Save the match info and tally the frequency counts}
+    {Return true if the current block must be flushed}
+  var
+    DCode  : Integer;
+    OutLen : LongInt;
+    InLen  : LongInt;
+  begin
+    dLitBuf^[dLastLit] := Lo(LC);
+    Inc(dLastLit);
+    if Dist = 0 then
+      Inc(dDynamicLitTree^[LC].FC.Freq)      {LC is the unmatched char}
+    else begin
+      {Here, LC is the match length - dMinMatchLen}
+      Dec(Dist);             {Dist = match distance - 1}
+      Inc(dDynamicLitTree^[dLengthCode^[lc] + dNumLiterals + 1].FC.Freq);
+      Inc(dDynamicDistTree^[DistToDistCode(dist)].FC.Freq);
+      dDistBuf^[dLastDist] := Dist;
+      Inc(dLastDist);
+      dFlags := dFlags or dFlagBit;
+    end;
+
+    dFlagBit := dFlagBit shl 1;
+    {Output the flags if they fill a byte}
+    if (dLastLit and 7) = 0 then begin
+      dFlagBuf^[dLastFlags] := dFlags;
+      Inc(dLastFlags);
+      dFlags := 0;
+      dFlagBit := 1;
+    end;
+
+    {Try to guess if it is profitable to stop the current block here}
+    if (dCompressionLevel > 2) and ((dLastLit and $0FFF) = 0) then begin
+      {Compute an upper bound for the compressed length}
+      OutLen := LongInt(dLastLit) * 8;
+      InLen := LongInt(dStrStart) - dBlockStart;
+      for DCode := 0 to dNumDistCodes - 1 do
+        OutLen := OutLen +
+          dDynamicDistTree^[DCode].FC.Freq * LongInt(5 + ExtraDistBits[DCode]);
+      OutLen := OutLen shr 3;
+      if (dLastDist < dLastLit div 2) and (OutLen < InLen div 2) then begin
+        dCodeTreeTally := True;
+        Exit;
+      end;
+    end;
+
+    dCodeTreeTally := (dLastLit = dLitBufSize-1) or
+                      (dLastDist = dDistBufSize);
+  end;
+
+  procedure GenerateBitLengths(var Desc : TreeDescription);
+    {-Compute the optimal bit lengths for a tree and update the total bit
+      length for the current block}
+  var
+    Base      : Integer;
+    mCode     : Integer;
+    mLength   : Integer;
+    h         : Integer;  {heap index}
+    n, m      : Integer;  {iterate over the tree elements}
+    Bits      : Integer;  {bit length}
+    XBits     : Integer;  {extra bits}
+    Overflow  : Integer;  {number of elements with bit length too large}
+    f         : Word;     {frequency}
+    Tree      : CTDataArrayPtr;
+    STree     : CTDataArrayPtr;
+    Extra     : WordArrayPtr;
+  begin
+    Tree     := Desc.DynamicTree;
+    Extra    := Desc.ExtraBits;
+    Base     := Desc.ExtraBase;
+    mCode    := Desc.MaxCode;
+    mLength  := Desc.MaxLength;
+    STree    := Desc.StaticTree;
+    Overflow := 0;
+
+    for Bits := 0 to dMaxCodeBits do
+      dBitLenCount^[Bits] := 0;
+
+    {In a first pass, compute the optimal bit lengths (which may
+     overflow in the case of the bit length tree)}
+    Tree^[dHeap^[dHeapMax]].DL.Len := 0;  {root of the heap}
+
+    for h := dHeapMax+1 to dHeapSize-1 do begin
+      n := dHeap^[h];
+      Bits := Tree^[Tree^[n].DL.Dad].DL.Len + 1;
+      if Bits > mLength then begin
+        Bits := mLength;
+        Inc(Overflow);
+      end;
+      Tree^[n].DL.Len := Bits;
+      {Overwrite Tree[n].DL.Dad which is no longer needed}
+
+      if n <= mCode then begin {a leaf node}
+        Inc(dBitLenCount^[Bits]);
+        XBits := 0;
+        if n >= base then
+          Xbits := Extra^[n - Base];
+        f := Tree^[n].FC.Freq;
+        dOptimalLen := dOptimalLen + LongInt(f) * (LongInt(Bits) + XBits);
+
+        if STree <> nil then
+          dStaticLen := dStaticLen + LongInt(f) *
+                       (LongInt(STree^[n].DL.Len) + XBits);
+      end;
+    end;
+
+    if Overflow = 0 then
+      Exit;
+
+    {Find the first bit length which could increase}
+    repeat
+      Bits := mLength - 1;
+      while dBitLenCount^[Bits] = 0 do
+        Dec(Bits);
+      Dec(dBitLenCount^[Bits]);        {move one leaf down the tree}
+      Inc(dBitLenCount^[Bits + 1], 2); {move one overflow item as its brother}
+      Dec(dBitLenCount^[mLength]);
+      {The brother of the overflow item also moves one step up,
+       but this does not affect dBitLenCount[dMaxMatchLen]}
+      Dec(Overflow, 2);
+    until Overflow <= 0;
+
+    {Now recompute all bit lengths, scanning in increasing frequency.
+    (It is simpler to reconstruct all lengths instead of fixing only
+    the wrong ones}
+    h := dHeapSize;
+    for Bits := mLength downto 1 do begin
+      n := dBitLenCount^[Bits];
+      while n <> 0 do begin
+        Dec(h);
+        m := dHeap^[h];
+        if m <= mCode then begin
+          if Tree^[m].DL.Len <> {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}(Bits) then begin
+            dOptimalLen := dOptimalLen +
+              (LongInt(Bits) - LongInt(Tree^[m].DL.Len)) *
+              LongInt(Tree^[m].FC.Freq);
+            Tree^[m].DL.Len := Bits;
+          end;
+          Dec(n);
+        end;
+      end;
+    end;
+
+  end;
+
+  function Smaller(Tree : CTDataArrayPtr; n, m : Integer) : Boolean;
+    {-Compares two subtrees, using the tree depth as tie breaker when the
+      subtrees have equal frequency. This minimizes the worst case length}
+  begin
+    Smaller := (Tree^[n].FC.Freq < Tree^[m].FC.Freq) or
+     ((Tree^[n].FC.Freq = Tree^[m].FC.Freq) and (dDepth^[n] <= dDepth^[m]));
+  end;
+
+  procedure pqDownHeap(Tree : CTDataArrayPtr; k : Integer);
+    {-Restore the heap property by moving down the tree starting at node k,
+      exchanging a node with the smallest of its two sons if necessary,
+      stopping when the heap property is re-established (each father
+      smaller than its two sons)}
+  label
+    ExitPoint;
+  var
+    v, j : Integer;
+  begin
+    v := dHeap^[k];
+    j := k shl 1;  {left son of k}
+    while j <= dHeapLen do begin
+      {Set j to the smallest of the two sons}
+      if (j < dHeapLen) and Smaller(Tree, dHeap^[j+1], dHeap^[j]) then
+        Inc(j);
+      {Exit if v is smaller than both sons}
+      if Smaller(Tree, v, dHeap^[j]) then
+        goto ExitPoint;
+      {Exchange v with the smallest son}
+      dHeap^[k] := dHeap^[j];
+      k := j;
+      {And continue down the tree, setting j to the left son of k}
+      j := j shl 1;
+    end;
+
+  ExitPoint:
+
+    dHeap^[k] := v;
+  end;
+
+  procedure BuildHufTree(var Desc : TreeDescription);
+    {-Construct one Huffman tree and assigns the code bit strings and
+      lengths. Update the total bit length for the current block}
+  var
+    Elems     : Integer;
+    n, m      : Integer;
+    mCode     : Integer;
+    Node      : Integer;
+    NewNode   : Integer;
+    Tree      : CTDataArrayPtr;
+    STree     : CTDataArrayPtr;
+  begin
+    Tree  := Desc.DynamicTree;
+    STree := Desc.StaticTree;
+    Elems := Desc.MaxElements;
+    mCode := -1;       {largest code with non zero frequency}
+    Node  := Elems;    {next internal node of the tree}
+
+    {Construct the initial heap, with least frequent element in
+     dHeap[LeastFrequent]. The sons of dHeap[n] are dHeap[2*n] and
+     dHeap[2*n+1]. dHeap[0] is not used}
+    dHeapLen := 0;
+    dHeapMax := dHeapSize;
+
+    for n := 0 to Elems-1 do begin
+      if (Tree^[n].FC.Freq <> 0) then begin
+        Inc(dHeapLen);
+        mCode := n;
+        dHeap^[dHeapLen] := mCode;
+        dDepth^[n] := 0;
+      end else
+        Tree^[n].DL.Len := 0;
+    end;
+
+    {The pkzip format requires that at least one distance code exists,
+     and that at least one bit should be sent even if there is only one
+     possible code. So to avoid special checks later on we force at least
+     two codes of non zero frequency}
+    while dHeapLen < 2 do begin
+      Inc(dHeapLen);
+      if mCode < 2 then begin
+        Inc(mCode);
+        dHeap^[dHeapLen] := mCode;
+        NewNode := mCode;
+      end else begin
+        dHeap^[dHeapLen] := 0;
+        NewNode := 0;
+      end;
+      Tree^[NewNode].FC.Freq := 1;
+      dDepth^[NewNode] := 0;
+      Dec(dOptimalLen);
+
+      if STree <> nil then
+        dStaticLen := dStaticLen - STree^[NewNode].DL.Len;
+        {new_node is 0 or 1 so it does not have extra bits}
+    end;
+    Desc.MaxCode := mCode;
+
+    {The elements dHeap[dHeapLen div 2+1 .. dHeapLen] are leaves of the tree,
+     establish sub-heaps of increasing lengths}
+    for n := dHeapLen div 2 downto 1 do
+      pqDownHeap(tree, n);
+
+    {Construct the Huffman tree by repeatedly combining the least two
+     frequent nodes}
+    repeat
+      n := dHeap^[dLeastFrequent];  {n = node of least frequency}
+     {Remove the least frequent element from the heap and
+      recreate the heap with one less element}
+      dHeap^[dLeastFrequent] := dHeap^[dHeapLen];
+      Dec(dHeapLen);
+      pqDownHeap(tree, dLeastFrequent);
+
+      m := dHeap^[dLeastFrequent];  {m = node of next least frequency}
+
+      Dec(dHeapMax);
+      dHeap^[dHeapMax] := n; {keep the nodes sorted by frequency}
+      Dec(dHeapMax);
+      dHeap^[dHeapMax] := m;
+
+      {Create a new node father of n and m}
+      Tree^[Node].FC.Freq := Tree^[n].FC.Freq + Tree^[m].FC.Freq;
+      dDepth^[Node] := Lo(dMax(dDepth^[n], dDepth^[m]) + 1);
+      Tree^[m].DL.Dad := Node;
+      Tree^[n].DL.Dad := Node;
+
+      {and insert the new node in the heap}
+      dHeap^[dLeastFrequent] := Node;
+      Inc(Node);
+      pqDownHeap(Tree, dLeastFrequent);
+    until dHeapLen < 2;
+
+    Dec(dHeapMax);
+    dHeap^[dHeapMax] := dHeap^[dLeastFrequent];
+
+    {At this point, Freq and Dad are set. We can generate the bit lengths}
+    GenerateBitLengths(Desc);
+    {Len is now set, we can generate the bit codes}
+    dGenerateCodes(Tree, mCode);
+  end;
+
+  procedure ScanTree(Tree : CTDataArrayPtr; MaxCode : Integer);
+    {-Scan a literal or distance tree to determine the frequencies of the
+      codes in the bit length tree. Updates dOptimalLen to take into account
+      the repeat counts. (The contribution of the bit length codes will be
+      added later during the construction of dBitLenTree.)}
+  var
+    PrevLen  : Integer;    {last emitted length}
+    CurLen   : Integer;    {length of current code}
+    NextLen  : Integer;    {length of next code}
+    Count    : Integer;    {repeat count of the current code}
+    MaxCount : Integer;    {max repeat count}
+    MinCount : Integer;    {min repeat count}
+    n        : Integer;    {iterates over all tree elements}
+  begin
+    PrevLen  := -1;
+    NextLen  := Tree^[0].DL.Len;
+    Count    := 0;
+    MaxCount := 7;
+    MinCount := 4;
+
+    if NextLen = 0 then begin
+      MaxCount := 138;
+      MinCount := 3;
+    end;
+    Tree^[MaxCode+1].DL.Len := {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}(-1);  {guard}
+
+    for n := 0 to MaxCode do begin
+      CurLen := NextLen;
+      NextLen := Integer(Tree^[n + 1].DL.Len);
+      Inc(Count);
+
+      if (Count >= MaxCount) or (CurLen <> NextLen) then begin
+        if Count < MinCount then
+          Inc(dBitLenTree^[CurLen].FC.Freq, Count)
+        else if CurLen <> 0 then begin
+          if CurLen <> PrevLen then
+            Inc(dBitLenTree^[CurLen].FC.Freq);
+          Inc(dBitLenTree^[dREP_3_6].FC.Freq);
+        end else if Count <= 10 then
+          Inc(dBitLenTree^[dREPZ_3_10].FC.Freq)
+        else
+          Inc(dBitLenTree^[dREPZ_11_138].FC.Freq);
+
+        Count := 0;
+        PrevLen := CurLen;
+        if NextLen = 0 then begin
+          MaxCount := 138;
+          MinCount := 3;
+        end else if CurLen = NextLen then begin
+          MaxCount := 6;
+          MinCount := 3;
+        end else begin
+          MaxCount := 7;
+          MinCount := 4;
+        end;
+      end;
+    end;
+  end;
+
+  function BuildBitLenTree : Integer;
+    {-Construct the Huffman tree for the bit lengths and return the
+      index in BitLenOrder of the last bit length code to send}
+  var
+    {index of last bit length code of non zero freq}
+    MaxBitLenIndex : Integer;
+  begin
+    {Determine the bit length frequencies for literal and distance trees}
+    ScanTree(dDynamicLitTree, dLitTreeDescription.MaxCode);
+    ScanTree(dDynamicDistTree, dDistTreeDescription.MaxCode);
+
+    {Build the bit length tree}
+    BuildHufTree(dBitLenTreeDescription);
+    {dOptimalLen now includes the length of the tree representations, except
+     the lengths of the bit lengths codes and the 5+5+4 bits for the counts}
+
+    {Determine the number of bit length codes to send. The pkzip format
+     requires that at least 4 bit length codes be sent}
+    MaxBitLenIndex := dNumBitLenCodes - 1;
+    while (MaxBitLenIndex > 3) and
+          (dBitLenTree^[BitLenOrder[MaxBitLenIndex]].DL.Len = 0) do
+      Dec(MaxBitLenIndex);
+
+    {Update dOptimalLen to include the bit length tree and counts}
+    dOptimalLen := dOptimalLen + 3 * (MaxBitLenIndex+1) + 5 + 5 + 4;
+
+    BuildBitLenTree := MaxBitLenIndex;
+  end;
+
+  procedure dFlushOutbuf(Value, Bytes : Word);
+  var
+    BytesWritten   : Integer;
+  begin
+    {Exit on pending errors}
+    if ArchiveStatus <> ecOk then Exit;
+
+    BlockWrite(NewZip, OutBuf^, OutPos, BytesWritten);
+    ArchiveStatus := IoResult;
+    if ArchiveStatus <> ecOk then
+      if BytesWritten <> OutPos then
+        ArchiveStatus := ecDiskFull;
+    if ArchiveStatus <> 0 then Exit;
+    if Bytes > 0 then
+      Move(Value, OutBuf^[0], Bytes);
+    OutPos := Bytes;
+  end;
+
+  procedure dPutWord(W : {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF});
+    {-Output a 16 bit value to the bit stream, lower (oldest) byte first}
+  begin
+    {Fill buffer and write and clear when full}
+    if OutPos + SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}) <= SizeOf(OutBuf^) then begin
+      Move(W, OutBuf^[OutPos], SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+      Inc(OutPos, SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+    end else
+      dFlushOutbuf(W, SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}));
+  end;
+
+  procedure dPutByte(B : Byte);
+  begin
+    {Fill buffer and write and clear when full}
+    if OutPos + SizeOf(Byte) <= SizeOf(OutBuf^) then begin
+      OutBuf^[OutPos] := B;
+      Inc(OutPos);
+    end else
+      dFlushOutbuf(B, SizeOf(Byte));
+  end;
+
+  procedure dSendBits(Value, Length : Integer);
+    {-Send a value on a given number of bits}
+  begin
+    {Exit if pending errors}
+    if ArchiveStatus <> ecOk then Exit;
+
+    {If not enough room in dBitStrBuf, use (valid) bits from dBitStrBuf and
+     (16 - BitsValid) bits from value}
+    if BitsValid > 16 - length then begin
+      dBitStrBuf := dBitStrBuf or (Value shl BitsValid);
+      dPutWord(dBitStrBuf);
+      if ArchiveStatus <> ecOk then Exit;
+      dBitStrBuf := {$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF}(Value) shr (16 - BitsValid);
+      BitsValid := BitsValid + (Length - 16);
+    end else begin
+      dBitStrBuf := dBitStrBuf or (Value shl BitsValid);
+      Inc(BitsValid, Length);
+    end;
+  end;
+
+  procedure dBitsDone;
+    {-Write out any remaining bits in an incomplete byte}
+  begin
+    if BitsValid > 8 then
+      dPutWord(dBitStrBuf)
+    else if BitsValid > 0 then
+      dPutByte(dBitStrBuf);
+    if ArchiveStatus <> ecOk then Exit;
+    dFlushOutbuf(0, 0);
+    dBitStrBuf := 0;
+    BitsValid := 0;
+  end;
+
+  procedure dCopyBlock(Buf : ByteArrayPtr; Len : Word; Header : Boolean);
+    {-Copy a stored block to the zip file, storing first the length and its
+      one's complement if requested}
+  var
+    BytesWritten : Word;
+  begin
+    dBitsDone;              {align on byte boundary and empty buffer}
+    if (Header) then begin
+      dPutWord(Len);
+      dPutWord(not Len);
+    end;
+    dFlushOutbuf(0, 0);
+    if ArchiveStatus <> ecOk then Exit;
+    BlockWrite(NewZip, Buf^, Len, BytesWritten);
+    ArchiveStatus := IoResult;
+    if ArchiveStatus = ecOk then
+      if BytesWritten <> Len then
+        ArchiveStatus := ecDiskFull;
+  end;
+
+  procedure dCompressBlock(LTree, DTree : CTDataArrayPtr);
+    {-Send the block data compressed using the given Huffman trees}
+  var
+    Flag  : Byte;      {current flags}
+    Dist  : Word;      {distance of matched string}
+    lx    : Word;      {running index in dLitBuf}
+    dx    : Word;      {running index in dDistBuf}
+    fx    : Word;      {running index in dFlagBuf}
+    Code  : Word;      {the code to send}
+    lc    : Integer;   {match length or unmatched char (if dist == 0)}
+    Extra : Integer;   {number of extra bits to send}
+  begin
+    lx   := 0;
+    dx   := 0;
+    fx   := 0;
+    flag := 0;
+
+    if dLastLit <> 0 then begin
+      repeat
+        if (lx and 7) = 0 then begin
+          Flag := dFlagBuf^[fx];
+          Inc(fx);
+        end;
+        lc := dLitBuf^[lx];
+        Inc(lx);
+
+        if (Flag and 1) = 0 then begin
+          {send a literal byte}
+          with LTree^[lc] do dSendBits(FC.Code, DL.Len);
+        end else begin
+          {lc is the match length - MIN_MATCH}
+          Code := dLengthCode^[lc];
+          {send the length code}
+          with LTree^[Code + dNumLiterals + 1] do dSendBits(FC.Code, DL.Len);
+          Extra := ExtraLitLenBits[code];
+          if Extra <> 0 then begin
+            Dec(lc, dBaseLength^[Code]);
+            dSendBits(lc, Extra);        {send the extra length bits}
+          end;
+
+          Dist := dDistBuf^[dx];
+          Inc(dx);
+          {dist is the match distance - 1}
+          Code := DistToDistCode(Dist);
+          {send the distance code}
+          with DTree^[Code] do dSendBits(FC.Code, DL.Len);
+          Extra := ExtraDistBits[Code];
+          if Extra <> 0 then begin
+            Dec(Dist, dBaseDist^[Code]);
+            dSendBits(Dist, Extra);   {send the extra distance bits}
+          end;
+        end;  {literal or match pair ?}
+        Flag := Flag shr 1;
+      until (lx >= dLastLit) or (ArchiveStatus <> ecOk);
+    end;
+    with LTree^[dEndOfBlockCode] do dSendBits(FC.Code, DL.Len);
+  end;
+
+  procedure dSendTree(Tree : CTDataArrayPtr; MaxCode : Integer);
+    {-Send a literal or distance tree in compressed form,
+      using the codes in dBitLenTree}
+  label
+    LoopContinue;
+  var
+    n           : Integer;  {iterates over all tree elements}
+    PrevLen     : Integer;  {last emitted length}
+    CurLen      : Integer;  {length of current code}
+    NextLen     : Integer;  {length of next code}
+    Count       : Integer;  {repeat count of the current code}
+    MaxCount    : Integer;  {max repeat count}
+    MinCount    : Integer;  {min repeat count}
+  begin
+    PrevLen := -1;
+    NextLen := Tree^[0].DL.Len;
+    Count := 0;
+    MaxCount := 7;
+    MinCount := 4;
+
+    if NextLen = 0 then begin
+      MaxCount := 138;
+      MinCount := 3;
+    end;
+
+    for n := 0 to MaxCode do begin
+      CurLen := NextLen;
+      NextLen := Integer(Tree^[n+1].DL.Len);
+      Inc(Count);
+      if (Count < MaxCount) and (CurLen = NextLen) then
+        goto LoopContinue
+      else if Count < MinCount then begin
+        repeat
+          with dBitLenTree^[CurLen] do dSendBits(FC.Code, DL.Len);
+          Dec(Count);
+        until Count = 0;
+      end else if CurLen <> 0 then begin
+        if CurLen <> PrevLen then begin
+          with dBitLenTree^[CurLen] do dSendBits(FC.Code, DL.Len);
+          Dec(Count);
+        end;
+        with dBitLenTree^[dREP_3_6] do dSendBits(FC.Code, DL.Len);
+        dSendBits(Count-3, 2);
+      end else if Count <= 10 then begin
+          with dBitLenTree^[dREPZ_3_10] do dSendBits(FC.Code, DL.Len);
+          dSendBits(Count-3, 3);
+      end else begin
+        with dBitLenTree^[dREPZ_11_138] do dSendBits(FC.Code, DL.Len);
+        dSendBits(Count-11, 7);
+      end;
+
+      Count := 0;
+      PrevLen := CurLen;
+      if NextLen = 0 then begin
+        MaxCount := 138;
+        MinCount := 3;
+      end else if CurLen = NextLen then begin
+        MaxCount := 6;
+        MinCount := 3;
+      end else begin
+        MaxCount := 7;
+        MinCount := 4;
+      end;
+
+    LoopContinue:
+
+      if ArchiveStatus <> ecOk then Exit;
+    end;
+  end;
+
+  procedure dSendAllTrees(LCodes, DCodes, BLCodes : Integer);
+    {-Send the header for a block using dynamic Huffman trees: the
+      counts, the lengths of the bit length codes, the literal tree
+      and the distance tree. LCodes >= 257, DCodes >= 1, BLCodes >= 4}
+  var
+    Rank : Integer;  {index in BitLenOrder}
+  begin
+    dSendBits(LCodes - 257, 5);
+    dSendBits(DCodes - 1,   5);
+    dSendBits(BLCodes - 4,  4);
+    for Rank := 0 to BLCodes - 1 do
+      dSendBits(dBitLenTree^[BitLenOrder[Rank]].DL.Len, 3);
+    dSendTree(dDynamicLitTree, LCodes - 1);  {send the literal tree}
+    dSendTree(dDynamicDistTree, DCodes - 1);  {send the distance tree}
+  end;
+
+  function FlushBlock(Buf : ByteArrayPtr; StoredLen : LongInt;
+                      LastBlock : Boolean) : LongInt;
+    {-Determine the best encoding for the current block: dynamic trees,
+     static trees or store, and output the encoded block to the zip file
+     returns the total compressed length for the file so far}
+  const
+    {The three block types}
+    StoredBlock    = 0 shl 1;
+    StaticTrees    = 1 shl 1;
+    DynamicTrees   = 2 shl 1;
+
+  var
+    MaxBitLenIndex : Integer; {index of last bit length code of non zero freq}
+    OptimalLenBytes,
+    StaticLenBytes : LongInt; {dOptimalLen and dStaticLen in bytes}
+  begin
+    dFlagBuf^[dLastFlags] := dFlags; {Save the flags for the last 8 items}
+
+    {Check if the file is ascii or binary}
+    if dTypeOfFile = Unknown then
+      SetFileType;
+
+    {Construct the literal and distance trees}
+    BuildHufTree(dLitTreeDescription);
+    BuildHufTree(dDistTreeDescription);
+    {At this point, dOptimalLen and dStaticLen are the total bit lengths of
+     the compressed block data, excluding the tree representations}
+
+    {Build the bit length tree for the above two trees, and get the index
+     in BitLenOrder of the last bit length code to send}
+    MaxBitLenIndex := BuildBitLenTree;
+
+    {Determine the best encoding. Compute first the block length in bytes}
+    OptimalLenBytes := (dOptimalLen + 3 + 7) shr 3;
+    StaticLenBytes := (dStaticLen + 3 + 7) shr 3;
+
+    {Trigger use of static trees}
+    if StaticLenBytes <= OptimalLenBytes then
+      OptimalLenBytes := StaticLenBytes;
+
+    if (StoredLen + 4 <= OptimalLenBytes) and (buf <> nil) then begin
+      dSendBits(StoredBlock + Ord(LastBlock), 3);  {send block type}
+      dCompressedLen := (dCompressedLen + 3 + 7) and (not LongInt(7));
+      dCompressedLen := dCompressedLen + (StoredLen + 4) shl 3;
+      dCopyBlock(buf, StoredLen, True);  {with header}
+    end else if StaticLenBytes = OptimalLenBytes then begin
+      dSendBits(StaticTrees + Ord(LastBlock), 3);
+      dCompressBlock(dStaticLitTree, dStaticDistTree);
+      dCompressedLen := dCompressedLen + 3 + dStaticLen;
+    end else begin
+      dSendBits(DynamicTrees + Ord(LastBlock), 3);
+      dSendAllTrees(dLitTreeDescription.MaxCode + 1,
+                    dDistTreeDescription.MaxCode + 1,
+                    MaxBitLenIndex + 1);
+      dCompressBlock(dDynamicLitTree, dDynamicDistTree);
+      dCompressedLen := dCompressedLen + 3 + dOptimalLen;
+    end;
+    InitBlock;
+
+    if LastBlock then begin
+      dBitsDone;
+      dCompressedLen := dCompressedLen + 7;  {align on byte boundary}
+    end;
+
+    FlushBlock := dCompressedLen shr 3;
+  end;
+
+  function Deflate : LongInt;
+    {-Processes a new input file and return its compressed length}
+  const
+    TooDistant     = 4096;     {Match too far into buffer}
+  var
+    Flush          : Boolean;  {set if current block must be flushed}
+    MatchAvailable : Boolean;  {True if previous match exists}
+    HashHead       : Word;     {head of hash chain}
+    PrevMatch      : Word;     {previous match}
+    MatchLength    : Word;     {length of best match}
+    d              : LongInt;  {dummy for FlushBlock return value}
+  begin
+    Deflate := 0;                                                      {!!.02}
+    MatchAvailable := False;
+    MatchLength := dMinMatchLen - 1;
+
+    {Process the input block}
+    while dLookAhead <> 0 do begin
+      {Insert the string window[dStrStart .. dStrStart+2] in the}
+      {dictionary, and set HashHead to the head of the hash chain}
+      asm
+      {$IFDEF VirtualPascal}
+        push  edi
+        push  esi
+        mov   eax,dHashIndex   {update hash index}
+        mov   ecx,dHashShift
+        shl   eax,cl           {shl dHashShift}
+        mov   edi,dWindow      {es:di = dWindow[]}
+        add   edi,dStrStart
+        add   edi,dMinMatchLen-1{es:di = dWindow[dStrStart+dMinMatchLen-1]}
+        xor   ax,word ptr [edi]
+        and   eax,dHashMask
+        mov   dHashIndex,eax
+
+        mov   edi,dNext         {es:di = dNext[]}
+        shl   eax,1             {Adjust for word access}
+        add   edi,eax           {es:di = dNext[dHashIndex]}
+        movzx ecx,word ptr [edi] {cx = dNext[dHashIndex]}
+        mov   HashHead,ecx      {HashHead = dNext[dHashIndex]}
+
+        mov   eax,dStrStart
+        mov   [edi],ax          {dNext[dHashIndex] = dStrStart}
+
+        mov   edi,dPrev         {es:di = dPrev[]}
+        and   eax,dWindowMask
+        shl   eax,1             {Adjust for word access}
+        add   edi,eax           {es:di = dPrev[dStrStart and dWindowMask]}
+        mov   [edi],cx         {dPrev[dStrStart and dWindowMask] = HashHead}
+        pop   esi
+        pop   edi
+      {$ELSE}
+        mov   ax,dHashIndex    {update hash index}
+        mov   cx,dHashShift
+        shl   ax,cl            {shl dHashShift}
+        les   di,dWindow       {es:di = dWindow[]}
+        add   di,dStrStart
+        add   di,dMinMatchLen-1{es:di = dWindow[dStrStart+dMinMatchLen-1]}
+        xor   ax,es:[di]
+        and   ax,dHashMask
+        mov   dHashIndex,ax
+
+        les   di,dNext         {es:di = dNext[]}
+        shl   ax,1             {Adjust for word access}
+        add   di,ax            {es:di = dNext[dHashIndex]}
+        mov   cx,es:[di]       {cx = dNext[dHashIndex]}
+        mov   HashHead,cx      {HashHead = dNext[dHashIndex]}
+
+        mov   ax,dStrStart
+        mov   es:[di],ax       {dNext[dHashIndex] = dStrStart}
+
+        les   di,dPrev         {es:di = dPrev[]}
+        and   ax,dWindowMask
+        shl   ax,1             {Adjust for word access}
+        add   di,ax            {es:di = dPrev[dStrStart and dWindowMask]}
+        mov   es:[di],cx       {dPrev[dStrStart and dWindowMask] = HashHead}
+      {$ENDIF}
+      end;
+      {Find the longest match, discarding those <= dPrevLength}
+      dPrevLength := MatchLength;
+      PrevMatch := dMatchStart;
+      MatchLength := dMinMatchLen-1;
+
+      if (HashHead <> 0) and (dPrevLength < dMaxLazyMatch) and
+         (dStrStart - HashHead <= dMaxDistance) then begin
+        {To simplify the code, we prevent matches with the string
+         of window index 0 (in particular we have to avoid a match
+         of the string with itself at the start of the input file)}
+        MatchLength := dLongestMatch(HashHead);
+        {dLongestMatch() sets dMatchStart}
+        if (MatchLength > dLookAhead) then
+          MatchLength := dLookAhead;
+        {Ignore a length dMinMatchLen match if it is too distant}
+        if (MatchLength = dMinMatchLen) and
+           (dStrStart - dMatchStart > TooDistant) then
+          Dec(MatchLength);
+      end;
+
+      {If there was a match at the previous step and the current
+       match is not better, output the previous match}
+      if (dPrevLength >= dMinMatchLen) and (MatchLength <= dPrevLength) then begin
+        Flush := dCodeTreeTally(dStrStart - 1 - PrevMatch,
+                                dPrevLength - dMinMatchLen);
+        {Insert in hash table all strings up to the end of the match.
+         dStrStart-1 and dStrStart are already inserted}
+        Dec(dLookAhead, dPrevLength - 1);
+        Dec(dPrevLength, 2);
+        repeat
+          asm
+          {$IFDEF VirtualPascal}
+            push  esi
+            push  edi
+            add   dStrStart,1      {inc search start}
+            mov   eax,dHashIndex   {update hash index}
+            mov   ecx,dHashShift
+            shl   eax,cl           {shl dHashShift}
+            mov   edi,dWindow      {edi = dWindow[]}
+            add   edi,dStrStart
+            add   edi,dMinMatchLen
+            dec   edi              {edi = dWindow[dStrStart+sMinMatchLen-1]}
+            xor   ax,[edi]
+            and   eax,dHashMask
+            mov   dHashIndex,eax
+
+            mov   edi,dNext         {edi = dNext[]}
+            shl   eax,1             {Adjust for word access}
+            add   edi,eax           {edi = dNext[dHashIndex]}
+            movzx ecx,word ptr [edi] {ecx = dNext[dHashIndex]}
+            mov   HashHead,ecx      {HashHead = dNext[dHashIndex]}
+
+            mov   eax,dStrStart
+            mov   [edi],ax          {dNext[dHashIndex] = dStrStart}
+
+            mov   edi,dPrev         {es:di = dPrev[]}
+            and   eax,dWindowMask
+            shl   eax,1             {Adjust for word access}
+            add   edi,eax           {es:di = dPrev[dStrStart and dWindowMask]}
+            mov   [edi],cx          {dPrev[dStrStart and dWindowMask] = HashHead}
+            pop   edi
+            pop   esi
+          {$ELSE}
+            add   dStrStart,1      {inc search start}
+            mov   ax,dHashIndex    {update hash index}
+            mov   cx,dHashShift
+            shl   ax,cl            {shl dHashShift}
+            les   di,dWindow       {es:di = dWindow[]}
+            add   di,dStrStart
+            add   di,dMinMatchLen
+            dec   di               {es:di = dWindow[dStrStart+sMinMatchLen-1]}
+            xor   ax,es:[di]
+            and   ax,dHashMask
+            mov   dHashIndex,ax
+
+            les   di,dNext         {es:di = dNext[]}
+            shl   ax,1             {Adjust for word access}
+            add   di,ax            {es:di = dNext[dHashIndex]}
+            mov   cx,es:[di]       {cx = dNext[dHashIndex]}
+            mov   HashHead,cx      {HashHead = dNext[dHashIndex]}
+
+            mov   ax,dStrStart
+            mov   es:[di],ax       {dNext[dHashIndex] = dStrStart}
+
+            les   di,dPrev         {es:di = dPrev[]}
+            and   ax,dWindowMask
+            shl   ax,1             {Adjust for word access}
+            add   di,ax            {es:di = dPrev[dStrStart and dWindowMask]}
+            mov   es:[di],cx       {dPrev[dStrStart and dWindowMask] = HashHead}
+          {$ENDIF}
+          end;
+          Dec(dPrevLength);
+        until dPrevLength = 0;
+        MatchAvailable := False;
+        MatchLength := dMinMatchLen-1;
+      end else if MatchAvailable then begin
+        {If there was no match at the previous position, output a
+         single literal. If there was a match but the current match
+         is longer, truncate the previous match to a single literal}
+         Flush := dCodeTreeTally(0, dWindow^[dStrStart-1]);
+         Dec(dLookAhead);
+      end else begin
+        {There is no previous match to compare with, wait for
+         the next step to decide}
+        MatchAvailable := True;
+        Flush := False;
+        Dec(dLookAhead);
+      end;
+
+      if Flush then begin
+        if dBlockStart >= 0 then
+          d := FlushBlock(ByteArrayPtr(@dWindow^[dBlockStart]),
+                           LongInt(dStrStart) - dBlockStart, False)
+        else
+          d := FlushBlock(nil, LongInt(dStrStart) - dBlockStart, False);
+        dBlockStart := dStrStart;
+        if ArchiveStatus <> ecOk then Exit;
+      end;
+      Inc(dStrStart);
+
+      {Make sure that we always have enough look ahead, except
+       at the end of the input file. We need dMaxMatchLen bytes
+       for the next match, plus dMinMatchLen bytes to insert the
+       string following the next match}
+      while (dLookAhead < dMinLookahead) and (not InEof) and
+            (ArchiveStatus = ecOk) do dFillWindow;
+      if ArchiveStatus <> ecOk then Exit;
+
+    end;
+
+    if MatchAvailable then
+      if dCodeTreeTally(0, dWindow^[dStrStart-1]) then {};
+
+    if dBlockStart >= 0 then
+      Deflate := FlushBlock(ByteArrayPtr(@dWindow^[dBlockStart]),
+                             LongInt(dStrStart) - dBlockStart, True)
+    else
+      Deflate := FlushBlock(nil, LongInt(dStrStart) - dBlockStart, True);
+  end;
+
+const
+  {Allocation sizes in bytes for deflate buffers}
+  szDistBuf         = dDistBufSize * SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF});
+  szLitBuf          = dLitBufSize * SizeOf(Byte);
+  szFlagBuf         = dFlagBufSize * SizeOf(Byte);
+  szHeap            = dHeapSize * SizeOf(Integer);
+  szDynamicLitTree  = dHeapSize * SizeOf(CTData);
+  szDynamicDistTree = (2 * dNumDistCodes + 1) * SizeOf(CTData);
+  szStaticLitTree   = (dNumLitCodes + 2) * SizeOf(CTData);
+  szStaticDistTree  = dNumDistCodes * SizeOf(CTData);
+  szBitLenTree      = (2 * dNumBitLenCodes + 1) * SizeOf(CTData);
+  szBaseLength      = dLengthCodes * SizeOf({$IFDEF VirtualPascal} SmallInt {$ELSE} Integer {$ENDIF});
+  szBaseDist        = dNumDistCodes * SizeOf({$IFDEF VirtualPascal} SmallInt {$ELSE} Integer {$ENDIF});
+  szLengthCode      = dMaxMatchLen - dMinMatchLen + 1;
+  szDistCode        = 512;
+  szBitLenCount     = (dMaxCodeBits + 1) * SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF});
+  szDepth           = (2 * dNumLitCodes) + 1;
+  szWindow          = dWindowSize * 2 * SizeOf(Byte) + dMaxMatchLen;   {!!.02}
+  szPrev            = dWindowSize * SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF});
+  szNext            = dHashSize * SizeOf({$IFDEF VirtualPascal} SmallWord {$ELSE} Word {$ENDIF});
+
+  procedure AllocateDeflateBuffers;
+    {-Allocate and initialize buffers used for deflate}
+  begin
+    {Init buffer pointers}
+    dDistBuf        := nil;
+    dLitBuf         := nil;
+    dFlagBuf        := nil;
+    dHeap           := nil;
+    dDynamicLitTree := nil;
+    dDynamicDistTree:= nil;
+    dStaticLitTree  := nil;
+    dStaticDistTree := nil;
+    dBitLenTree     := nil;
+
+    dBaseLength     := nil;
+    dBaseDist       := nil;
+    dLengthCode     := nil;
+    dDistCode       := nil;
+    dBitLenCount    := nil;
+    dDepth          := nil;
+
+    dWindow         := nil;
+    dPrev           := nil;
+    dNext           := nil;
+
+    if not GetMemCheck(dDistBuf, szDistBuf) or
+       not GetMemCheck(dLitBuf,  szLitBuf) or
+       not GetMemCheck(dFlagBuf, szFlagBuf) or
+       not GetMemCheck(dHeap,    szHeap) then begin
+      ArchiveStatus := epFatal + ecOutOfMemory;
+      Exit;
+    end;
+    FillChar(dDistBuf^, szDistBuf, #0);
+    FillChar(dLitBuf^,  szLitBuf,  #0);
+    FillChar(dFlagBuf^, szFlagBuf, #0);
+    FillChar(dHeap^,    szHeap,    #0);
+
+    if not GetMemCheck(dDynamicLitTree,  szDynamicLitTree) or
+       not GetMemCheck(dDynamicDistTree, szDynamicDistTree) or
+       not GetMemCheck(dStaticLitTree,   szStaticLitTree) or
+       not GetMemCheck(dStaticDistTree,  szStaticDistTree) or
+       not GetMemCheck(dBitLenTree,      szBitLenTree) then begin
+      ArchiveStatus := epFatal + ecOutOfMemory;
+      Exit;
+    end;
+    FillChar(dDynamicLitTree^,  szDynamicLitTree,  #0);
+    FillChar(dDynamicDistTree^, szDynamicDistTree, #0);
+    FillChar(dStaticLitTree^,   szStaticLitTree,   #0);
+    FillChar(dStaticDistTree^,  szStaticDistTree,  #0);
+    FillChar(dBitLenTree^,      szBitLenTree,      #0);
+
+    if not GetMemCheck(dBaseLength,  szBaseLength) or
+       not GetMemCheck(dBaseDist,    szBaseDist) or
+       not GetMemCheck(dLengthCode,  szLengthCode) or
+       not GetMemCheck(dDistCode,    szDistCode) or
+       not GetMemCheck(dBitLenCount, szBitLenCount) or
+       not GetMemCheck(dDepth,       szDepth) then begin
+      ArchiveStatus := epFatal + ecOutOfMemory;
+      Exit;
+    end;
+    FillChar(dBaseLength^,  szBaseLength,  #0);
+    FillChar(dBaseDist^,    szBaseDist,    #0);
+    FillChar(dLengthCode^,  szLengthCode,  #0);
+    FillChar(dDistCode^,    szDistCode,    #0);
+    FillChar(dBitLenCount^, szBitLenCount, #0);
+    FillChar(dDepth^,       szDepth,       #0);
+
+    if not GetMemCheck(dWindow, szWindow) or
+       not GetMemCheck(dPrev,   szPrev) or
+       not GetMemCheck(dNext,   szNext) then begin
+      ArchiveStatus := epFatal + ecOutOfMemory;
+      Exit;
+    end;
+    FillChar(dWindow^, szWindow, #0);
+    FillChar(dPrev^,   szPrev,   #0);
+    FillChar(dNext^,   szNext,   #0);
+  end;
+
+  procedure DeflateFile(Level : Integer);
+  label
+    ExitPoint;
+  begin
+    dTypeOfFile      := Unknown;
+    OptionFlags      := 0;
+    CompressSize     := 0;
+    dCompressionLevel := Level;
+    CompressionUsed  := cmcDeflated;
+    ShowProg         := @glSPF <> nil;
+
+    InPos := 1;
+    InCnt := 0;
+    InEof := False;
+    Crc   := -1;
+
+    dBitStrBuf := 0;  {empty the bit buffer}
+    BitSValid  := 0;  {no bits valid in bit buffer yet}
+
+    {Initialize the buffer used for output. This buffer is allocated and}
+    {deallocated before and after calling DeflateFile}
+    OutPos := 0;
+    FillChar(OutBuf^, SizeOf(OutBuf^), #0);
+
+    {Init counters used in show progress calls}
+    TotalBytesRead := 0;
+    TotalBytesToRead := OrigFileSize;
+
+    AllocateDeflateBuffers;
+    if ArchiveStatus <> ecOk then
+      goto ExitPoint;
+
+    {Code tree and general initialization}
+    CodeTreeInit;
+    if ArchiveStatus <> ecOk then
+      goto ExitPoint;
+
+    LongestMatchInit(dCompressionLevel, OptionFlags);
+    if ArchiveStatus = ecOk then  {Do the compression}
+      CompressSize := Deflate;
+
+  ExitPoint:
+
+    {Cleanup}
+    FreeMemCheck(dWindow, szWindow);
+    FreeMemCheck(dPrev,   szPrev);
+    FreeMemCheck(dNext,   szNext);
+
+    FreeMemCheck(dBaseLength,  szBaseLength);
+    FreeMemCheck(dBaseDist,    szBaseDist);
+    FreeMemCheck(dLengthCode,  szLengthCode);
+    FreeMemCheck(dDistCode,    szDistCode);
+    FreeMemCheck(dBitLenCount, szBitLenCount);
+    FreeMemCheck(dDepth,       szDepth);
+
+    FreeMemCheck(dDynamicLitTree,  szDynamicLitTree);
+    FreeMemCheck(dDynamicDistTree, szDynamicDistTree);
+    FreeMemCheck(dStaticLitTree,   szStaticLitTree);
+    FreeMemCheck(dStaticDistTree,  szStaticDistTree);
+    FreeMemCheck(dBitLenTree,      szBitLenTree);
+
+    FreeMemCheck(dDistBuf, szDistBuf);
+    FreeMemCheck(dLitBuf,  szLitBuf);
+    FreeMemCheck(dFlagBuf, szFlagBuf);
+    FreeMemCheck(dHeap,    szHeap);
+  end;
+

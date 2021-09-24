@@ -1,0 +1,331 @@
+---- Objects.pas --------------------------------------------------------------
+
+{ ! fixes bug in tMemoryStream }
+
+Function TMemoryStream. ChangeListSize (ALimit: Word): Boolean;
+Var
+  AItems : PPtrArray;
+  P      : Pointer;
+  i      : Word;
+
+Begin
+  If ALimit > MaxBlockArraySize Then
+    ALimit := MaxBlockArraySize;
+
+  If ALimit <> BlockCount Then
+  Begin
+    ChangeListSize := False;
+
+    If ALimit = 0 Then
+      AItems := Nil
+    Else
+    Begin
+      AItems := MemAlloc (ALimit * SizeOf (Pointer));
+      If AItems = Nil Then
+        Exit;
+
+      FillChar (AItems^, ALimit * SizeOf (Pointer), 0);
+      If (BlockCount <> 0) And (BlockList <> Nil) Then
+      Begin
+        If ALimit < BlockCount Then i := ALimit
+                               Else i := BlockCount;
+        Move (BlockList^, AItems^, i * SizeOf (Pointer));
+      End;
+    End;
+
+    If ALimit < BlockCount Then
+    Begin
+      For i := ALimit To BlockCount - 1 Do
+      Begin
+        P := BlockList^ [i];
+        If P <> Nil Then
+          FreeMem (P, BlockSize);
+      End;
+
+      ChangeListSize := True;
+    End Else
+    Begin
+      i := BlockCount;
+
+      While i < ALimit Do
+      Begin
+        P := MemAlloc (BlockSize);
+        If P <> Nil Then
+          AItems^ [i] := P
+        Else
+          Break;
+
+        Inc (i);
+      End;
+
+      If i = ALimit Then
+        ChangeListSize := True;
+    End;
+
+    If BlockCount > 0 Then
+      FreeMem (BlockList, BlockCount * SizeOf (Pointer));
+    BlockList := AItems;
+    BlockCount := ALimit;
+  End
+  Else
+    ChangeListSize := True;
+End;
+
+{ ! Speed improvement }
+
+procedure TCollection.Insert(Item: Pointer); assembler; {&USES edi} {$FRAME-}
+asm
+                mov     edi,Self
+                mov     edx,[edi].TCollection.Count
+                mov     ecx,edx
+                cmp     ecx,[edi].TCollection.Limit
+                jne     @@1
+                push    ecx
+                push    edx
+                add     ecx,[edi].TCollection.Delta
+                push    ecx                     { [1]:DWord = ALimit    }
+                push    edi                     { [2]:Pointer = Self    }
+                mov     eax,[edi]
+                Call    DWord Ptr [eax].TCollection_SetLimit
+                pop     edx
+                pop     ecx
+                cmp     ecx,[edi].TCollection.Limit
+                je      @@4
+              @@1:
+                inc     [edi].TCollection.Count
+                mov     edi,[edi].TCollection.Items
+                mov     eax,Item
+                mov     [edi+ecx*4], eax
+                jmp     @@6
+              @@4:
+                mov     al,coOverflow
+                mov     edx,ecx
+                Call    CollectionError
+              @@6:
+end;
+
+
+---- VpSysW32.pas -------------------------------------------------------------
+
+
+{ ! removes mouse cursor }
+
+Procedure SysTVKbdInit;
+Begin
+  SetConsoleMode (SysConIn, 0); {ENABLE_MOUSE_INPUT}
+End;
+
+{ ! fixes RTL bug with random cursor positions }
+
+Const
+  mutCursor: PRTLCriticalSection = Nil; // Mutex for exclusive pos changes
+
+Procedure DoSetCursorPosition;
+Var
+  CurPos : TCoord;
+
+Begin
+  CurPos.x := CurXPos;
+  CurPos.y := CurYPos;
+  SetConsoleCursorPosition (SysConOut, CurPos);
+End;
+
+Function CursorThreadFunc (P: Pointer): Longint;
+Var
+  LastX, LastY : Longint;
+  CurPos       : TCoord;
+
+Begin
+  LastX := -1;
+  LastY := -1;
+
+  Repeat
+    If WaitForSingleObject (semCursor, SemInfinite) = WAIT_OBJECT_0 Then
+    Begin
+      ResetEvent (semCursor);
+      If (CurXPos <> LastX) Or (CurYPos <> LastY) Then
+      Begin
+        EnterCriticalSection (mutCursor^);
+        LastX := CurXPos;
+        LastY := CurYPos;
+        LeaveCriticalSection (mutCursor^);
+
+        CurPos.x := LastX;
+        CurPos.y := LastY;
+        SetConsoleCursorPosition (SysConOut, CurPos);
+      End;
+    End;
+  Until tidCursor = -2;
+
+  tidCursor := -1;
+End;
+
+Procedure CursorThreadExitProc;
+Begin
+  // Force cursor thread to terminate
+  tidCursor := -2;
+  SemPostEvent (semCursor);
+
+  Repeat
+    SysCtrlSleep (10);
+  Until tidCursor = -1;
+
+  // Update cursor position
+  DoSetCursorPosition;
+
+  If mutCursor <> Nil Then
+  Begin
+    DeleteCriticalSection (mutCursor^);
+    Dispose (mutCursor);
+    mutCursor := Nil;
+  End;
+End;
+
+Procedure InitialiseCursorThread;
+Var
+  sbi: TConsoleScreenBufferInfo;
+
+Begin
+  If tidCursor = -1 Then
+  begin
+    // Get initial cursor position
+    GetConsoleScreenBufferInfo (SysConOut, sbi);
+    CurXPos := sbi.dwCursorPosition.x;
+    CurYPos := sbi.dwCursorPosition.y;
+
+    New (mutCursor);
+    InitializeCriticalSection (mutCursor^);
+    semCursor := SemCreateEvent (Nil, False, False);
+    BeginThread (Nil, 16384, CursorThreadFunc, Nil, 0, tidCursor);
+    AddExitProc (CursorThreadExitProc);
+  end;
+End;
+
+Procedure SysTVSetCurPos (X, Y: Integer);
+Begin
+{$IFDEF RouteConsoleToStdInOut}
+  If tidCursor = -1 Then
+  Begin
+    CurXPos := X;
+    CurYPos := Y;
+    DoSetCursorPosition;
+  End Else
+  Begin
+    EnterCriticalSection (mutCursor^);
+    CurXPos := X;
+    CurYPos := Y;
+    LeaveCriticalSection (mutCursor^);
+    // Record cursor position; tell cursor thread to update
+    SemPostEvent (semCursor);
+  End;
+{$ELSE}
+  CurXPos := X;
+  CurYPos := Y;
+  DoSetCursorPosition; // Set cursor position without using cursor thread
+{$ENDIF}
+End;
+
+
+---- System.pas -------------------------------------------------------------
+
+
+{ ! Speed improvement }
+
+// Original code from Borland-Pascal 7.0 Runtime Libary Update (C) 1988-1994 Norbert Juffa
+
+procedure _StrIns(Src,Dest: Pointer; DestLen,Index: Longint); assembler; {&USES eax,ebx,ecx,edx,esi,edi,ebp} {&FRAME-}
+asm
+                Mov     ESI, Src
+                Xor     ECX, ECX
+                Mov     EDI, Dest
+                Xor     EBX, EBX
+                Or      CL, [ESI]
+                Jz      @@End_Ins
+                Mov     EDX, Index
+                Mov     EAX, DestLen
+                Dec     EDX
+                Mov     BL, [EDI]
+                Cmp     EDX, 80000000h
+                Sbb     EBP, EBP
+                And     EDX, EBP
+                Sub     EDX, EBX
+                Sbb     EBP, EBP
+                And     EDX, EBP
+                Add     EDX, EBX
+                Mov     EBP, EAX
+                Sub     EBP, EDX
+                Jbe     @@End_Ins
+                Sub     EBP, ECX
+                Ja      @@Make_Gap
+                Mov     [EDI], AL
+                Inc     EDI
+                Add     ECX, EBP
+                Add     EDI, EDX
+                Jmp     @@Fill
+        @@Make_Gap:
+                Mov     EDX, ECX
+                Add     ECX, EBX
+                Sub     ECX, EAX
+                Sbb     EBX, EBX
+                And     ECX, EBX
+                Add     EAX, ECX
+                Mov     [EDI], AL
+                Add     ECX, EBP
+                Add     EDI, EAX
+                Mov     EAX, ESI
+                Mov     ESI, EDI
+                Sub     ESI, EDX
+                STD
+                Rep     MovSB
+                Mov     EDI, ESI
+                Mov     ECX, EDX
+                Mov     ESI, EAX
+                Inc     EDI
+        @@Fill:
+                Mov     EAX, ECX
+                Inc     ESI
+                And     ECX, 3
+                Shr     EAX, 2
+                CLD
+                Rep     MovSB
+                Mov     ECX, EAX
+                Rep     MovSD
+        @@End_Ins:
+end;
+
+// Original code from Borland-Pascal 7.0 Runtime Libary Update (C) 1988-1994 Norbert Juffa
+
+procedure _StrDel(S: Pointer; Index,Count: Longint); assembler; {&USES eax,ecx,edx,esi,edi} {&FRAME-}
+asm
+                Mov     EAX, Index
+                Mov     ECX, Count
+                Dec     EAX
+                CDQ
+                And     EDX, EAX
+                Sub     EAX, EDX
+                Add     EDX, ECX
+                Jle     @@End_Del
+                Mov     ESI, S
+                Xor     ECX, ECX
+                Mov     CL, [ESI]
+                Sub     ECX, EAX
+                Jle     @@End_Del
+                Sub     ECX, EDX
+                Jg      @@Continue
+                Mov     [ESI], AL
+                Jmp     @@End_Del
+        @@Continue:
+                Sub     [ESI], DL
+                Add     ESI, EAX
+                Mov     EAX, ECX
+                Inc     ESI
+                Shr     EAX, 2
+                Mov     EDI, ESI
+                And     ECX, 3
+                Add     ESI, EDX
+                CLD
+                Rep     MovSB
+                Mov     ECX, EAX
+                Rep     MovSD
+        @@End_Del:
+end;

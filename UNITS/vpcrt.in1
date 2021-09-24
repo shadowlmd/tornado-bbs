@@ -1,0 +1,1697 @@
+  { Virtual Pascal for OS/2 - include file for OPCRT }
+  { (C) 1995,98 fPrint UK Ltd }
+
+  { Most of the functions in this unit are thin wrappers around the }
+  { platform-independent VpSysLow functions }
+
+  {$Delphi+}
+
+  { Private variables }
+
+  ThreadVar
+    SaveCursor : Word;
+
+  Var
+    NormAttr   : Byte;
+    DelayCount : Longint;
+    WindowSize : TSysPoint;
+
+  Const
+    ScanCode : Byte = 0;
+
+{$IFDEF WIN32}
+  Const
+    UpdateAreaQueueSize = 256;
+
+  Type
+    PUpdateAreaElem = ^UpdateAreaElem;
+    UpdateAreaElem = Record
+      StartOfs, EndOfs : Integer;
+    End;
+
+    UpdateAreaQueue = Array [0..UpdateAreaQueueSize-1] Of UpdateAreaElem;
+
+  Var
+    ConUpdateEvent    : THandle;
+    ConUpdateThread   : THandle;
+    ConUpdateThreadID : LongInt;
+    CriticalConUpdate : PRTLCriticalSection;
+    ConUpdateQPtr     : Integer;
+    ConUpdateQueue    : UpdateAreaQueue;
+
+  Function UpdateConsoleThread (P: Pointer): LongInt;
+  Var
+    i, j, TmpQPtr : Integer;
+    PElem         : PUpdateAreaElem;
+    TmpQueue      : UpdateAreaQueue;
+
+  Begin
+    Repeat
+      If WaitForSingleObject (ConUpdateEvent, SemInfinite) = WAIT_OBJECT_0 Then
+      Begin
+        ResetEvent (ConUpdateEvent);
+        If ConUpdateQPtr > 0 Then
+        Begin
+          EnterCriticalSection (CriticalConUpdate^);
+          TmpQPtr := ConUpdateQPtr;
+          ConUpdateQPtr := 0;
+          Move (ConUpdateQueue, TmpQueue, TmpQPtr * SizeOf (UpdateAreaElem));
+          LeaveCriticalSection (CriticalConUpdate^);
+
+          i := TmpQPtr - 1;
+          PElem := @TmpQueue [i];
+
+          While i > 0 Do
+          Begin
+            For j := i - 1 DownTo 0 Do
+              With TmpQueue [j] Do
+                If Max (StartOfs, PElem^. StartOfs) <=
+                   Min (EndOfs, PElem^. EndOfs) Then
+                Begin
+                  If PElem^. StartOfs < StartOfs Then
+                    StartOfs := PElem^. StartOfs;
+                  If PElem^. EndOfs > EndOfs Then
+                    EndOfs := PElem^. EndOfs;
+                  Dec (TmpQPtr);
+                  If i < TmpQPtr Then
+                    Move (TmpQueue [i + 1], TmpQueue [i], (TmpQPtr - i) *
+                      SizeOf (UpdateAreaElem));
+                  Break;
+                End;
+
+            Dec (i);
+            Dec (PElem);
+          End;
+
+          For i := 0 To TmpQPtr-1 Do
+            With TmpQueue [i] Do
+              VPSysLow. SysTVShowBuf (StartOfs, EndOfs - StartOfs);
+        End;
+      End;
+    Until ConUpdateThreadID = -1;
+
+    ConUpdateThreadID := 0;
+  End;
+
+  Procedure UpdateConsoleExitProc;
+  Begin
+    ConUpdateThreadID := -1;
+    SetEvent (ConUpdateEvent);
+
+    Repeat
+      SysCtrlSleep (10);
+    Until ConUpdateThreadID = 0;
+
+    CloseHandle (ConUpdateThread);
+    CloseHandle (ConUpdateEvent);
+    If CriticalConUpdate <> Nil Then
+    Begin
+      DeleteCriticalSection (CriticalConUpdate^);
+      Dispose (CriticalConUpdate);
+    End;
+  End;
+
+  Procedure StartConsoleThread;
+  Begin
+    ConUpdateQPtr := 0;
+    ConUpdateEvent := CreateEvent (Nil, True, False, Nil);
+    New (CriticalConUpdate);
+    InitializeCriticalSection (CriticalConUpdate^);
+    ConUpdateThread := BeginThread (Nil, 16384, UpdateConsoleThread, Nil, 0,
+      ConUpdateThreadID);
+    AddExitProc (UpdateConsoleExitProc);
+  End;
+
+  Procedure SysTVShowBuf (Pos, Size: Integer);
+  Var
+    i, NewEndOfs : Integer;
+
+  Begin
+    If Size > 0 Then
+    Begin
+      While ConUpdateQPtr >= UpdateAreaQueueSize Do
+        SysCtrlSleep (10);
+
+      NewEndOfs := Pos + Size;
+
+      EnterCriticalSection (CriticalConUpdate^);
+      For i := ConUpdateQPtr-1 DownTo 0 Do
+        With ConUpdateQueue [i] Do
+          If Max (StartOfs, Pos) <= Min (EndOfs, NewEndOfs) Then
+          Begin
+            If Pos < StartOfs Then
+              StartOfs := Pos;
+            If NewEndOfs > EndOfs Then
+              EndOfs := NewEndOfs;
+            LeaveCriticalSection (CriticalConUpdate^);
+            Exit;
+          End;
+
+      With ConUpdateQueue [ConUpdateQPtr] Do
+      Begin
+        StartOfs := Pos;
+        EndOfs := NewEndOfs;
+      End;
+      Inc (ConUpdateQPtr);
+      LeaveCriticalSection (CriticalConUpdate^);
+
+      SetEvent (ConUpdateEvent);
+    End;
+  End;
+{$ENDIF}
+
+  { Determines if a key has been pressed on the keyboard and returns True }
+  { if a key has been pressed                                             }
+
+  Function KeyPressed: Boolean;
+  Begin
+    Result := SysKeyPressed;
+  End;
+
+  { Reads a character from the keyboard and returns a character or an     }
+  { extended scan code.                                                   }
+
+  Function ReadKey: Char;
+  Begin
+    Result := SysReadKey;
+  End;
+
+  { Reads normal character attribute }
+
+  Procedure ReadNormAttr;
+  Begin
+    NormAttr := SysReadAttributesAt (WhereX - 1, WhereY - 1) And $7F;
+    NormVideo;
+  End;
+
+  { Setups window coordinates }
+
+  Procedure SetWindowPos;
+  Begin
+    SysTVGetScrMode (@WindowSize, False);
+    WindMin := 0;
+    WindMax := WindowSize.X - 1 + (WindowSize.Y - 1) Shl 8;
+  End;
+
+  { Stores current video mode in LastMode }
+
+  Procedure GetLastMode;
+  Begin
+    LastMode := SysTVGetScrMode (Nil, False);
+  End;
+
+  { Selects a specific text mode. The valid text modes are:               }
+  {   BW40: 40x25 Black and white                                         }
+  {   CO40  40x25 Color                                                   }
+  {   BW80  80x25 Black and white                                         }
+  {   CO80  80x25 Color                                                   }
+  {   Mono  80x25 Black and white                                         }
+  {   Font8x8 (Add-in) 43-/50-line mode                                   }
+
+  Procedure TextMode (Mode: Integer);
+  Begin
+    SysTVSetScrMode (Mode);
+  End;
+
+  { Defines a text window on the screen.                                  }
+
+  Procedure Window (XLow, YLow, XHigh, YHigh: Byte);
+  Begin
+    If (XLow <= XHigh) And (YLow <= YHigh) Then
+    Begin
+      Dec (XLow);
+      Dec (YLow);
+      If (XLow >= 0) And (YLow >= 0) Then
+      Begin
+        Dec (XHigh);
+        Dec (YHigh);
+        If (XHigh < WindowSize.X) And (YHigh < WindowSize.Y) Then
+        Begin
+          WindMin := XLow + YLow Shl 8;
+          WindMax := XHigh + YHigh Shl 8;
+          GotoXY (1, 1);
+        End;
+      End;
+    End;
+  End;
+
+  { Moves the cursor to the given coordinates within the screen.          }
+
+  Procedure GotoXY (X, Y: Byte);
+  Var
+    X1, Y1 : Word;
+
+  Begin
+    If (X > 0) And (Y > 0) Then
+    Begin
+      X1 := X - 1 + Lo (WindMin);
+      Y1 := Y - 1 + Hi (WindMin);
+      If (X1 <= Lo (WindMax)) And (Y1 <= Hi (WindMax)) Then
+        SysTVSetCurPos (X1, Y1);
+    End;
+  End;
+
+  { Returns the X coordinate of the current cursor location.              }
+
+  Function WhereX: Byte;
+  Var
+    X, Y : SmallWord;
+
+  Begin
+    SysGetCurPos (X, Y);
+    WhereX := X - Lo (WindMin) + 1;
+  End;
+
+  { Returns the Y coordinate of the current cursor location.              }
+
+  Function WhereY: Byte;
+  Var
+    X, Y : SmallWord;
+
+  Begin
+    SysGetCurPos (X, Y);
+    WhereY := Y - Hi (WindMin) + 1;
+  End;
+
+  { Clears the screen and returns the cursor to the upper-left corner.    }
+
+  Procedure ClrScr;
+  Var
+    Y : Integer;
+
+  Begin
+    For Y := Hi (WindMin) To Hi (WindMax) Do
+      FastFill (Lo (WindMax) - Lo (WindMin) + 1, TextChar, Y + 1,
+        Lo (WindMin) + 1, TextAttr);
+
+    GotoXY (1, 1);
+  End;
+
+  { Clears all characters from the cursor position to the end of the line }
+  { without moving the cursor.                                            }
+
+  Procedure ClrEol;
+  Var
+    X, Y : SmallWord;
+
+  begin
+    SysGetCurPos (X, Y);
+    FastFill (Lo (WindMax) - X, TextChar, Y + 1, X + 1, TextAttr);
+  end;
+
+  { Inserts an empty line at the cursor position.                         }
+
+  Procedure InsLine;
+  Begin
+    ScrollWindowDown (Lo (WindMin) + 1, WhereY, Lo (WindMax) + 1,
+      Hi (WindMax) + 1, 1);
+  End;
+
+  { Deletes the line containing the cursor.                               }
+
+  Procedure DelLine;
+  Begin
+    ScrollWindowUp (Lo (WindMin) + 1, WhereY, Lo (WindMax) + 1,
+      Hi (WindMax) + 1, 1);
+  End;
+
+  { Selects the foreground character color.                               }
+
+  Procedure TextColor (Color: Byte);
+  Begin
+    If Color > White Then
+      Color := (Color And $0F) Or $80;
+    TextAttr := (TextAttr And $70) Or Color;
+  End;
+
+  { Selects the background color.                                         }
+
+  Procedure TextBackground (Color: Byte);
+  Begin
+    TextAttr := (TextAttr And $8F) Or ((Color And $07) Shl 4);
+  End;
+
+  { Selects low intensity characters.                                     }
+
+  Procedure LowVideo;
+  Begin
+    TextAttr := TextAttr And $F7;
+  End;
+
+  { Selects normal intensity characters.                                  }
+
+  Procedure NormVideo;
+  Begin
+    TextAttr := NormAttr;
+  End;
+
+  { Selects high-intensity characters.                                    }
+
+  Procedure HighVideo;
+  Begin
+    TextAttr := TextAttr Or $08;
+  End;
+
+  { Delays a specified number of milliseconds. }
+
+  Procedure Delay (MS: Longint);
+  Begin
+    SysCtrlSleep (MS);
+  End;
+
+  { Plays sound of a specified frequency and duration.                    }
+
+  (*
+  Procedure PlaySound (Freq, Duration: Longint);
+  Begin
+    SysBeepEx (Freq, Duration);
+  End;
+  *)
+
+  { Do line feed operation (only called when at bottom of screen) }
+
+  Procedure LineFeed;
+  Begin
+    ScrollWindowUp (Lo (WindMin) + 1, Hi (WindMin) + 1, Lo (WindMax) + 1,
+      Hi (WindMax) + 1, 1);
+  End;
+
+  { Outputs packed string to the CRT device }
+
+  Procedure FlushBuffered; Assembler; {&USES None} {&FRAME-}
+  Asm
+    push      ecx
+    push      esi
+    mov       eax, edx
+    shr       ecx, 16
+    mov       esi, edx
+    shr       eax, 16
+    mov       edx, OpCrt. VirtualWidth
+    and       esi, $FFFF
+    mul       edx
+    add       esi, eax
+    movzx     eax, OpCrt. VideoLength
+    shl       esi, 1
+    lea       edx, [ecx + ecx]
+    sub       eax, esi
+    push      esi
+    shr       eax, 1
+    add       esi, OpCrt. VirtualSegment
+    cmp       eax, ecx
+    jge       @start
+    test      eax, eax
+    jz        @skip_loop
+    mov       ecx, eax
+  @start:
+    mov       ah, OpCrt. TextAttr
+  @loop:
+    mov       al, [edi]
+    inc       edi
+    mov       [esi], ax
+    add       esi, 2
+    dec       ecx
+    jnz       @loop
+  @skip_loop:
+    mov       eax, OpCrt. VirtualSegment
+    cmp       eax, OpCrt. VideoSegment
+    jz        @draw
+    add       esp, 4
+    jmp       @invisible
+  @draw:
+    push      edx
+    call      SysTVShowBuf
+  @invisible:
+    pop       esi
+    pop       ecx
+    mov       edx, ebx
+    and       ecx, $FFFF
+  End;
+
+  Procedure WritePackedString (S: PChar; Len: Longint);
+  Var
+    XY : LongInt;
+
+  Begin
+    Asm
+      push      esi
+      push      edi
+      mov       esi, Len
+      push      ebx
+      test      esi, esi
+      jz        @exit
+      lea       eax, XY
+      lea       ebx, XY + 2
+      push      eax
+      push      ebx
+      call      SysGetCurPos
+      mov       ecx, esi
+      mov       ebx, XY
+      mov       esi, S
+      mov       edx, ebx
+      mov       edi, esi
+    @loop:
+      xor       eax, eax
+      mov       ah, byte ptr WindMax
+    @short_loop:
+      mov       al, [esi]
+      inc       esi
+      cmp       al, 10
+      jz        @lf
+      cmp       al, 13
+      jz        @cr
+      cmp       al, 8
+      jz        @bs
+      cmp       al, 7
+      jz        @bell
+      shr       eax, 8
+      inc       bx
+      add       ecx, $10000
+      cmp       ax, bx
+      jb        @new_str
+      mov       ah, al
+      dec       cx
+      jnz       @short_loop
+      jmp       @done
+    @cr:
+      cmp       ecx, $FFFF
+      jna       @skip_flush1
+      Call      FlushBuffered
+    @skip_flush1:
+      mov       edi, esi
+      movzx     bx, byte ptr WindMin
+      mov       dx, bx
+      jmp       @end_loop
+    @bs:
+      cmp       ecx, $FFFF
+      jna       @skip_flush2
+      Call      FlushBuffered
+    @skip_flush2:
+      mov       edi, esi
+      movzx     eax, byte ptr WindMin
+      cmp       bx, ax
+      jna       @skipX
+      dec       bx
+    @skipX:
+      cmp       dx, ax
+      jna       @end_loop
+      dec       dx
+      jmp       @end_loop
+    @bell:
+      cmp       ecx, $FFFF
+      jna       @skip_flush3
+      Call      FlushBuffered
+    @skip_flush3:
+      mov       edi, esi
+      push      ecx
+      push      edx
+      call      SysBeep
+      pop       edx
+      pop       ecx
+      jmp       @end_loop
+    @new_str:
+      movzx     bx, byte ptr WindMin
+    @lf:
+      cmp       ecx, $FFFF
+      jna       @skip_flush4
+      Call      FlushBuffered
+    @skip_flush4:
+      mov       edi, esi
+      mov       eax, WindMax
+      rol       ebx, 16
+      shr       eax, 8
+      inc       bx
+      cmp       bx, ax
+      jna       @no_scroll
+      mov       bx, ax
+      push      ecx
+      call      LineFeed
+      pop       ecx
+    @no_scroll:
+      rol       ebx, 16
+      mov       edx, ebx
+    @end_loop:
+      dec       cx
+      jnz       @loop
+    @done:
+      test      ecx, ecx
+      jz        @skip_flush5
+      Call      FlushBuffered
+    @skip_flush5:
+      movzx     eax, bx
+      shr       ebx, 16
+      push      eax
+      push      ebx
+      call      SysTVSetCurPos
+    @exit:
+      pop       ebx
+      pop       edi
+      pop       esi
+    End;
+  End;
+
+(*
+  Procedure WritePackedString (S: PChar; Len: Longint);
+  Var
+    i, BufChars : Integer;
+    X1, Y1      : Longint;
+    X, Y        : SmallWord;
+    C           : Char;
+    Buf         : Array [0..255] of Char;
+
+    Procedure FlushBuffered;
+    Begin
+      If BufChars > 0 Then
+      Begin
+        Buf [0] := Chr (BufChars);
+        FastWrite (String (Buf), Y1 + 1, X1 + 1, TextAttr);
+        BufChars := 0;
+        X1 := X;
+        Y1 := Y;
+      End;
+    End;
+
+  Begin
+    SysGetCurPos (X, Y);
+    BufChars := 0;
+    X1 := X;
+    Y1 := Y;
+
+    For i := 0 To Len - 1 Do
+    Begin
+      C := S [i];
+
+      Case C Of
+        ^J:               { Line Feed }
+          Begin
+            FlushBuffered;
+            If Y >= Hi (WindMax) Then LineFeed
+                                 Else Inc (Y);
+            Y1 := Y;
+          End;
+        ^M:               { Carriage return }
+          Begin
+            FlushBuffered;
+            X := Lo (WindMin);
+            X1 := X;
+          End;
+        ^H:               { Backspace }
+          Begin
+            FlushBuffered;
+            If X > Lo (WindMin) Then Dec (X);
+            If X1 > Lo (WindMin) Then Dec (X1);
+          End;
+        ^G:               { Bell }
+          SysBeep;
+        Else
+          Inc (BufChars);
+          Buf [BufChars] := C;
+          Inc (X);
+          If X > Lo (WindMax) Then
+          Begin
+            FlushBuffered;
+            X := Lo (WindMin);
+            X1 := X;
+            Inc (Y);
+            If Y > Hi (WindMax) Then
+            Begin
+              FlushBuffered;
+              LineFeed;
+              Y := Hi (WindMax);
+            End;
+            Y1 := Y;
+          End;
+      End;
+    End;
+
+    FlushBuffered;
+    SysTVSetCurPos (X, Y);
+  End;
+*)
+
+  { CRT text file I/O functions }
+
+  Function CrtRead (Var F: Text): Longint;
+  Var
+    CurPos : Longint;
+    C      : Char;
+
+  Begin
+    With TextRec (F) Do
+    Begin
+      CurPos := 0;
+
+      Repeat
+        SysFlushKeyBuf;
+        C := ReadKey;
+
+        Case C Of
+          ^H:                     { Backspace }
+            If CurPos > 0 Then
+            Begin
+              WritePackedString (^H' '^H, 3);
+              Dec (CurPos);
+            End;
+          #27:                    { Escape }
+            While CurPos > 0 Do
+            Begin
+              WritePackedString (^H' '^H, 3);
+              Dec (CurPos);
+            End;
+          ' '..#255:
+            If CurPos < BufSize - 2 Then
+            Begin
+              BufPtr^ [CurPos] := C;
+              Inc (CurPos);
+              WritePackedString (@C, 1);
+            End;
+        End;
+      Until (C = ^M) Or (CheckEOF And (C = ^Z));
+
+      BufPtr^ [CurPos] := C;
+      Inc (CurPos);
+      If C = ^M Then              { Carriage Return }
+      Begin
+        BufPtr^ [CurPos] := ^J;    { Line Feed }
+        Inc (CurPos);
+        WritePackedString (^M^J, 2);
+      End;
+      BufPos := 0;
+      BufEnd := CurPos;
+    End;
+
+    CrtRead := 0;                 { I/O result = 0: success }
+  End;
+
+  Function CrtWrite (Var F: Text): Longint;
+  Begin
+    With TextRec (F) Do
+    Begin
+      WritePackedString (PChar (BufPtr), BufPos);
+      BufPos := 0;
+    End;
+
+    CrtWrite := 0;                { I/O result = 0: success }
+  End;
+
+  Function CrtReturn (Var F: Text): Longint;
+  Begin
+    CrtReturn := 0;               { I/O result = 0: success }
+  End;
+
+  Function CrtOpen (Var F: Text): Longint;
+  Begin
+    With TextRec (F) Do
+    Begin
+      CloseFunc := @CrtReturn;
+      If Mode = fmInput Then
+      Begin
+        InOutFunc := @CrtRead;
+        FlushFunc := @CrtReturn;
+      End Else
+      Begin
+        Mode := fmOutput;
+        InOutFunc := @CrtWrite;
+        FlushFunc := @CrtWrite;
+      End;
+    End;
+
+    CrtOpen := 0;                 { I/O result = 0: success }
+  End;
+
+  { Associates a text file with CRT device.                               }
+
+  Procedure AssignCrt (Var F: Text);
+  Begin
+    With TextRec (F) Do
+    Begin
+      Handle := $FFFFFFFF;
+      Mode := fmClosed;
+      BufSize := SizeOf (Buffer);
+      BufPtr := @Buffer;
+      OpenFunc := @CrtOpen;
+      Name [0] := #0;
+    End;
+  End;
+
+  { Signal Handler }
+
+  Function CrtCtrlBreakHandler: Boolean;
+  Begin
+    CrtCtrlBreakHandler := Not CheckBreak;
+  End;
+
+  Procedure InitCrt;
+  Begin
+    SysTvInitCursor;
+    {SysTvKbdInit;} {!!}
+    GetLastMode;
+    SetWindowPos;
+    ReadNormAttr;
+    AssignCrt (Input);
+    Reset (Input);
+    AssignCrt (Output);
+    ReWrite (Output);
+    CtrlBreakHandler := CrtCtrlBreakHandler;
+    SysCtrlSetCBreakHandler;
+
+    ScreenWidth := WindowSize.X;
+    ScreenHeight := WindowSize.Y;
+    VirtualWidth := ScreenWidth;
+    VirtualHeight := ScreenHeight;
+    InTextMode := True;
+    VirtualSegment := Longint (SysTVGetSrcBuf);
+    VideoLength := ScreenWidth * ScreenHeight * 2;
+    VideoSegment := VirtualSegment;
+  {$IFDEF WIN32}
+    StartConsoleThread;
+  {$ENDIF}
+  End;
+
+  Procedure ReInitCrt;
+  Begin
+    SysTvInitCursor;
+    {SysTvKbdInit;} {!!}
+    GetLastMode;
+    SetWindowPos;
+    ReadNormAttr;
+    CtrlBreakHandler := CrtCtrlBreakHandler;
+    SysCtrlSetCBreakHandler;
+
+    ScreenWidth := WindowSize.X;
+    ScreenHeight := WindowSize.Y;
+    VirtualWidth := ScreenWidth;
+    VirtualHeight := ScreenHeight;
+    InTextMode := True;
+    VirtualSegment := Longint (SysTVGetSrcBuf);
+    VideoLength := ScreenWidth * ScreenHeight * 2;
+    VideoSegment := VirtualSegment;
+  End;
+
+  Function ReadKeyWord: Word;
+  Var
+    Event : TSysKeyEvent;
+
+  Begin
+    While Not KeyPressed Do
+      Delay (50);
+
+    SysTVGetKeyEvent (Event);
+    Result := Event.skeKeyCode;
+    If Result And $FF = $E0 Then
+      Result := Result And $FF00; // Change E0 to 00
+  End;
+
+  Function GetCrtMode: Byte;
+  Begin
+    GetLastMode;
+    GetCrtMode := LastMode;
+  End;
+
+  Procedure GotoXYAbs (X, Y: Byte);
+  Begin
+    If (X > 0) And (Y > 0) Then
+      SysTVSetCurPos (X - 1, Y - 1);
+  End;
+
+  Function Font8x8Selected: Boolean;
+  Begin
+    Font8x8Selected := ScreenHeight > 25;
+  End;
+
+  Procedure SelectFont8x8 (IsOn: Boolean);
+  Begin
+    { !! More work }
+    { Unsupported }
+  End;
+
+  Function WhereXY: Word;
+  Var
+    X, Y : SmallWord;
+
+  Begin
+    SysGetCurPos (X, Y);
+    WhereXY := X - Lo (WindMin) + 1 + (Y - Hi (WindMin) + 1) Shl 8;
+  End;
+
+  Function WhereXAbs: Byte;
+  Var
+    X, Y : SmallWord;
+
+  Begin
+    SysGetCurPos (X, Y);
+    WhereXAbs := X + 1;
+  End;
+
+  Function WhereYAbs: Byte;
+  Var
+    X, Y : SmallWord;
+
+  Begin
+    SysGetCurPos (X, Y);
+    WhereYAbs := Y + 1;
+  End;
+
+  Function ReadCharAtCursor: Char;
+  Var
+    X, Y : SmallWord;
+
+  Begin
+    SysGetCurPos (X, Y);
+    ReadCharAtCursor := SysReadCharAt (X, Y);
+  End;
+
+  Function ReadAttrAtCursor: Byte;
+  Var
+    X, Y : SmallWord;
+
+  Begin
+    SysGetCurPos (X, Y);
+    ReadAttrAtCursor := SysReadAttributesAt (X, Y);
+  End;
+
+  Procedure SetVisiblePage (PageNum: Byte);
+  Begin
+    { !! Not supported }
+    Unsupported;
+  End;
+
+  Procedure ScrollWindowUp (XLo, YLo, XHi, YHi, Lines: Byte);
+  Var
+    vOfs                                : Word;
+    RowsToFill, RowsToMove, CharsPerRow : Byte;
+
+  Begin
+    Asm
+      push  ebx
+      push  esi
+      push  edi
+
+      mov   dh,YHi
+      mov   al,Lines
+      dec   dh
+      mov   ch,YLo
+      mov   ah,dh
+      dec   ch
+      mov   dl,XHi
+      sub   ah,ch
+      dec   dl
+      mov   cl,XLo
+      inc   ah
+      dec   cl
+      cld
+
+      cmp   al,ah
+      ja    @MaxLines
+      or    al,al
+      jnz   @NotWhole
+    @MaxLines:
+      mov   al,ah
+    @NotWhole:
+      sub   ah,al
+      mov   RowsToFill,al
+      mov   RowsToMove,ah
+
+      {Get #chars per row}
+      movzx eax,dl
+      sub   al,cl
+      inc   al
+      mov   CharsPerRow,al
+      mov   esi,eax
+
+      mov   al,ch
+      mov   ebx,ScreenWidth
+      and   ecx,$ff
+      mul   ebx
+      add   eax,ecx
+      shl   ebx,1
+      lea   edi,[eax*2]
+      shl   esi,1
+      mov   vOfs,edi
+      xor   eax,eax
+      add   edi,OpCrt.VirtualSegment
+      mov   al,RowsToFill
+      mov   ecx,ebx
+      sub   ebx,esi
+      mul   ecx
+      lea   esi,[edi+eax]
+
+      mov   ah,TextAttr
+      mov   al,' '
+      mov   ecx,eax
+      shl   eax,16
+      mov   dl,CharsPerRow
+      mov   ax,cx
+      mov   dh,RowsToMove
+      xor   ecx,ecx
+
+      or    dh,dh
+      jz    @StartFill
+      {Move rows}
+    @Move:
+      mov   cl,dl
+      shr   ecx,1
+      rep   movsd
+      jnc   @MoveSkipWord
+      movsw
+    @MoveSkipWord:
+      add   edi,ebx
+      add   esi,ebx
+      dec   dh
+      jnz   @Move
+
+      {Fill with blanks}
+    @StartFill:
+      mov   dh,RowsToFill
+    @Fill:
+      mov   cl,dl
+      shr   ecx,1
+      rep   stosd
+      jnc   @FillSkipWord
+      stosw
+    @FillSkipWord:
+      add   edi,ebx
+      dec   dh
+      jnz   @Fill
+
+      pop   edi
+      pop   esi
+      pop   ebx
+    End;
+
+    { Update the entire screen buffer after scrolling: Optimise this! }
+    If VirtualSegment = VideoSegment Then
+      SysTVShowBuf (vOfs, (YHi - YLo + 2) * ScreenWidth * 2);
+  End;
+
+  Procedure ScrollWindowDown (XLo, YLo, XHi, YHi, Lines: Byte);
+  Var
+    vOfs                                : Word;
+    RowsToFill, RowsToMove, CharsPerRow : Byte;
+
+  Begin
+    Asm
+      push  ebx
+      push  esi
+      push  edi
+
+      mov   dh,YHi
+      mov   al,Lines
+      dec   dh
+      mov   ch,YLo
+      mov   bl,dh
+      dec   ch
+      mov   dl,XHi
+      sub   bl,ch
+      dec   dl
+      mov   cl,XLo
+      inc   bl
+      dec   cl
+      cld
+
+      cmp   al,bl
+      ja    @MaxLines
+      or    al,al
+      jnz   @NotWhole
+    @MaxLines:
+      mov   al,bl
+    @NotWhole:
+      sub   bl,al
+      mov   RowsToFill,al
+      mov   RowsToMove,bl
+
+      {Get #chars per row}
+      movzx eax,dl
+      sub   al,cl
+      inc   al
+      mov   CharsPerRow,al
+      mov   esi,eax
+
+      mov   ebx,ScreenWidth
+      mov   al,dh
+      and   ecx,$ff
+      mul   ebx
+      shl   esi,1
+      add   eax,ecx
+      shl   ebx,1
+      lea   edi,[eax*2]
+      mov   ecx,ebx
+      add   edi,OpCrt.VirtualSegment
+      xor   eax,eax
+      add   ebx,esi
+      mov   al,RowsToFill
+      mul   ecx
+      mov   esi,edi
+      sub   esi,eax
+
+      mov   ah,TextAttr
+      mov   al,' '
+      mov   ecx,eax
+      shl   eax,16
+      mov   dl,CharsPerRow
+      mov   ax,cx
+      mov   dh,RowsToMove
+      xor   ecx,ecx
+
+      or    dh,dh
+      jz    @StartFill
+      {Move rows}
+    @Move:
+      mov   cl,dl
+      shr   ecx,1
+      rep   movsd
+      jnc   @MoveSkipWord
+      movsw
+    @MoveSkipWord:
+      sub   edi,ebx
+      sub   esi,ebx
+      dec   dh
+      jnz   @Move
+
+      {Fill with blanks}
+    @StartFill:
+      mov   dh,RowsToFill
+    @Fill:
+      mov   cl,dl
+      shr   ecx,1
+      rep   stosd
+      jnc   @FillSkipWord
+      stosw
+    @FillSkipWord:
+      sub   edi,ebx
+      dec   dh
+      jnz   @Fill
+
+      mov   vOfs,edi
+      pop   edi
+      pop   esi
+      pop   ebx
+    End;
+
+    { Update the entire screen buffer after scrolling: Optimise this! }
+    If VirtualSegment = VideoSegment Then
+      SysTVShowBuf (vOfs - VirtualSegment, (YHi - YLo + 2) * ScreenWidth * 2);
+  End;
+
+  Function CursorTypeSL: Word;
+  Var
+    Y1, Y2  : Integer;
+    Visible : Boolean;
+
+  Begin
+    SysTVGetCurType (Y1, Y2, Visible);
+    CursorTypeSL := Y2 Shl 8 + Y1;
+  End;
+
+  Function CursorStartLine: Byte;
+  Var
+    Y1, Y2  : Integer;
+    Visible : Boolean;
+
+  Begin
+    SysTVGetCurType (Y1, Y2, Visible);
+    CursorStartLine := Y1;
+  End;
+
+  Function CursorEndLine: Byte;
+  Var
+    Y1, Y2  : Integer;
+    Visible : Boolean;
+
+  Begin
+    SysTVGetCurType (Y1, Y2, Visible);
+    CursorEndLine := Y2;
+  End;
+
+  Procedure SetCursorSize (Startline, EndLine: ShortInt);
+  Begin
+    SysTVSetCurType (StartLine, EndLine, Abs (EndLine) >= Abs (StartLine));
+  End;
+
+  Function KbdFlags: Byte;
+  Begin
+    KbdFlags := SysTVGetShiftState;
+  End;
+
+  Function CheckKbd (Var KeyCode: Word): Boolean;
+  Var
+    Event : TSysKeyEvent;
+
+  Begin
+    Result := SysTVPeekKeyEvent (Event);
+
+    If Result Then
+      KeyCode := Event.skeKeyCode;
+  End;
+
+  Procedure FastWrite (St: String; Row, Col: Word; Attr: Byte);
+  Var
+    vOfs : Word;
+
+  Begin
+    Asm
+      push  esi
+      push  edi
+      mov   eax,Row
+      mov   edi,Col
+      dec   eax
+      mov   ecx,OpCrt.VirtualWidth
+      dec   edi
+      mul   ecx
+      lea   esi,DWord Ptr &St
+      add   edi,eax
+      mov   cl,[esi]
+      shl   edi,1
+      movzx eax,OpCrt.VideoLength
+      inc   esi
+      sub   eax,edi
+      mov   vOfs,edi
+      shr   eax,1
+      and   ecx, $FF
+      jz    @exit
+
+      add   edi,OpCrt.VirtualSegment
+      cmp   eax,ecx
+      jge   @Start
+      mov   ecx,eax
+      jcxz  @exit
+    @Start:
+      mov   ah,attr
+
+    @next:
+      mov   al,[esi]
+      inc   esi
+      mov   [edi],ax
+      add   edi,2
+      dec   ecx
+      jnz   @next
+
+    @exit:
+      pop   edi
+      pop   esi
+    End;
+
+    If VirtualSegment = VideoSegment Then
+      SysTVShowBuf (vOfs, Length (St) Shl 1);
+  End;
+
+  Procedure FastFill (Number: Word; Ch: Char; Row, Col: Word; Attr: Byte);
+  Var
+    vOfs : Word;
+
+  Begin
+    Asm
+      push  esi
+      push  edi
+      mov   eax,Row
+      mov   edi,Col
+      dec   eax
+      mov   ecx,OpCrt.VirtualWidth
+      dec   edi
+      mul   ecx
+      add   edi,eax
+      mov   al,&ch
+      mov   ah,attr
+      shl   edi,1
+      mov   ecx,eax
+      shl   eax,16
+      mov   vOfs,edi
+      mov   ax,cx
+      mov   ecx,Number
+      add   edi,OpCrt.VirtualSegment
+      shr   ecx,1
+      rep   stosd
+      jnc   @exit
+      stosw
+    @exit:
+      pop   edi
+      pop   esi
+    End;
+
+    If VirtualSegment = VideoSegment Then
+      SysTVShowBuf (vOfs, Number Shl 1);
+  End;
+
+  Procedure FastFillVert (Number: Word; Ch: Char; Row, Col: Word; Attr: Byte);
+  Var
+    vOfs : Word;
+
+  Begin
+    Asm
+      push  edi
+      mov   eax,Row
+      mov   edi,Col
+      dec   eax
+      mov   ecx,OpCrt.VirtualWidth
+      dec   edi
+      mul   ecx
+      add   edi,eax
+      mov   edx,ecx
+      shl   edi,1
+      mov   ah,attr
+      mov   vOfs,edi
+      mov   al,&ch
+      add   edi,OpCrt.VirtualSegment
+      shl   edx,1
+
+      mov   ecx,Number
+      jcxz  @exit
+
+    @next:
+      mov   [edi],ax
+      add   edi,edx
+      dec   ecx
+      jnz   @next
+
+    @exit:
+      pop   edi
+    End;
+
+    If VirtualSegment = VideoSegment Then
+      SysTVShowBuf (vOfs, (Number * VirtualWidth) Shl 1);
+  End;
+
+  Procedure FastVert (St: String; Row, Col: Word; Attr: Byte);
+  Var
+    vOfs : Word;
+
+  Begin
+    Asm
+      push  esi
+      push  edi
+      push  ebx
+      mov   eax,Row
+      dec   eax
+      mov   ecx,OpCrt.VirtualWidth
+      mul   ecx
+      mov   edi,Col
+      dec   edi
+      add   edi,eax
+      shl   edi,1
+      mov   vOfs,edi
+      add   edi,OpCrt.VirtualSegment
+      lea   esi,DWord Ptr &St
+
+      lodsb
+      movzx ecx,al
+      jcxz  @exit
+      mov   edx,OpCrt.VirtualWidth
+      dec   edx
+      shl   edx,1
+      mov   ah,attr
+
+    @next:
+      lodsb
+      stosw
+      add   edi,edx
+      loop  @next
+
+    @exit:
+      pop   ebx
+      pop   edi
+      pop   esi
+    End;
+
+    If VirtualSegment = VideoSegment Then
+      SysTVShowBuf (vOfs, (Length (St) * VirtualWidth) Shl 1);
+  End;
+
+  Procedure ChangeAttribute (Number: Word; Row, Col: Word; Attr: Byte);
+  Var
+    vOfs : Word;
+
+  Begin
+    Asm
+      push  esi
+      push  edi
+
+      mov   eax,Row
+      mov   edi,Col
+      dec   eax
+      mov   ecx,OpCrt.VirtualWidth
+      dec   edi
+      mul   ecx
+      add   edi,eax
+      shl   edi,1
+      mov   vOfs,edi
+      mov   al,Attr
+      add   edi,OpCrt.VirtualSegment
+      mov   ecx,Number
+      inc   edi
+      jcxz  @exit
+
+    @next:
+      mov   [edi],al
+      add   edi,2
+      dec   ecx
+      jnz   @next
+
+    @exit:
+      pop   edi
+      pop   esi
+    End;
+
+    If VirtualSegment = VideoSegment Then
+      SysTVShowBuf (vOfs, Number Shl 1);
+  End;
+
+  Procedure MoveScreen (Var Source, Dest; Length: Word);
+  Begin
+    Asm
+      push    esi
+      push    edi
+      mov     esi,Source
+      mov     edi,Dest
+      mov     ecx,Length
+      cmp     esi,edi
+      jae     @Forward
+
+      lea     esi,[esi+ecx*2]
+      lea     edi,[edi+ecx*2]
+      sub     esi, 2
+      sub     edi, 2
+      std
+      rep     movsw
+      cld
+      jmp     @exit
+
+    @Forward:
+      shr     ecx,1
+      cld
+      rep     movsd
+      jnc     @exit
+      movsw
+
+    @exit:
+      pop     edi
+      pop     esi
+    End;
+
+    If (Word (@Dest) >= VideoSegment) And
+       (Word (@Dest) - VideoSegment <= VideoLength)
+    Then
+      SysTVShowBuf (Word (@Dest) - Word (VideoSegment), Length Shl 1);
+  End;
+
+  Procedure FastText (St: String; Row, Col: Word);
+  Var
+    vOfs : Word;
+
+  Begin
+    Asm
+      push  esi
+      push  edi
+      push  ebx
+      mov   eax,Row
+      dec   eax
+      mov   ecx,OpCrt.VirtualWidth
+      mul   ecx
+      mov   edi,Col
+      dec   edi
+      add   edi,eax
+      shl   edi,1
+      mov   vOfs,edi
+      add   edi,OpCrt.VirtualSegment
+      lea   esi,DWord Ptr &St
+
+      lodsb
+      movzx ecx,al
+      jcxz  @exit
+
+    @next:
+      lodsb
+      stosb
+      inc   edi
+      loop  @next
+
+    @exit:
+      pop   ebx
+      pop   edi
+      pop   esi
+    End;
+
+    If VirtualSegment = VideoSegment Then
+      SysTVShowBuf (vOfs, Length (St) Shl 1);
+  End;
+
+  Procedure WriteAttribute (St: String; Row, Col: Word);
+  Var
+    vOfs : Word;
+
+  Begin
+    Asm
+      push  esi
+      push  edi
+      push  ebx
+      mov   eax,Row
+      dec   eax
+      mov   ecx,OpCrt.VirtualWidth
+      mul   ecx
+      mov   edi,Col
+      dec   edi
+      add   edi,eax
+      shl   edi,1
+      mov   vOfs,edi
+      add   edi,OpCrt.VirtualSegment
+      lea   esi,DWord Ptr &St
+
+      lodsb
+      movzx ecx,al
+      jcxz  @exit
+
+    @next:
+      lodsb
+      inc   edi
+      stosb
+      loop  @next
+
+    @exit:
+      pop   ebx
+      pop   edi
+      pop   esi
+    End;
+
+    If VirtualSegment = VideoSegment then
+      SysTVShowBuf (vOfs, Length (St) Shl 1);
+  End;
+
+  Procedure FastReadIntern (Offs, Number: Word; Row, Col: Word; Var St: String); assembler;
+    Asm
+      push  esi
+      push  edi
+      push  ebx
+      mov   eax,Row
+      dec   eax
+      mov   ecx,OpCrt.VirtualWidth
+      mul   ecx
+      mov   esi,Col
+      dec   esi
+      add   esi,eax
+      shl   esi,1
+      add   esi,OpCrt.VirtualSegment
+      add   esi,Offs
+
+      mov   ecx,Number
+      and   ecx,0FFh
+      Mov   edi,DWord Ptr &St
+      mov   [edi],cl
+      inc   edi
+
+    @next:
+      lodsb
+      inc   esi
+      stosb
+      loop  @next
+
+    @exit:
+      pop   ebx
+      pop   edi
+      pop   esi
+    End;
+
+  Procedure FastRead (Number: Byte; Row, Col: Word; Var St: String);
+  Begin
+    FastReadIntern (0, Number, Row, Col, St);
+  End;
+
+  Procedure ReadAttribute (Number: Byte; Row, Col: Word; Var St: String);
+  Begin
+    FastReadIntern (1, Number, Row, Col, St);
+  End;
+
+  Procedure FastCenter (St: string; Row, Attr: Byte);
+  Var
+    AbsX : Word;
+
+  begin
+    AbsX := 1 + Lo (WindMin) + (Lo (WindMax) - Lo (WindMin)) shr 1 -
+      Length (St) Shr 1;
+    FastWrite (St, Row + Hi (WindMin), AbsX, Attr);
+  end;
+
+  Procedure FastFlush (St: String; Row, Attr: Byte);
+  Var
+    AbsX : Word;
+
+  begin
+    AbsX := 2 + Lo (WindMax) - Length (St);
+    FastWrite (St, Row + Hi (WindMin), AbsX, Attr);
+  end;
+
+  Procedure FlexWrite (St: String; Row, Col: Word; Var FAttrs: FlexAttrs);
+  Var
+    WNum, Start, i    : SmallWord;
+    AtNum, Attr, PInx : Byte;
+    S                 : String;
+    Prev              : Array [1..20] Of Byte;
+
+  Begin
+    i := 1;
+    AtNum := 0;
+    Attr := FAttrs [0];
+    WNum := 1;
+    PInx := 1;
+    Prev [PInx] := AtNum;
+
+    Repeat
+      Start := i;
+      S := '';
+
+      While (i <= Length (St)) And ((St [i] < ^A) Or (St [i] > ^C)) Do
+      Begin
+        S [i - Start + 1] := St [i];
+        Inc (i);
+      End;
+
+      S [0] := Chr (i - Start);
+
+      If i > Start Then
+        FastWrite (S, Row, Col + Start - WNum, Attr);
+
+      If i <= Length (St) Then
+      Begin
+        If AtNum = Ord (St [i]) Then
+        Begin
+          Dec (PInx);
+          AtNum := Prev [PInx];
+        End Else
+        Begin
+          Inc (PInx);
+          AtNum := Ord (St [i]);
+          Prev [PInx] := AtNum;
+        End;
+        Attr := FAttrs [AtNum];
+      End;
+
+      Inc (i);
+      Inc (WNum);
+    Until i > Length (St);
+  End;
+
+  Function FlexLen (S: String): Byte;
+  Var
+    i, Len : Byte;
+
+  Begin
+    Len := 0;
+
+    For i := 1 to Length (s) Do
+      If (s [i] < ^A) Or (s [i] > ^C) Then
+        Inc (Len);
+
+    FlexLen := Len;
+  end;
+
+  Procedure FastWriteCtrl (St: String; Row, Col: Word; Attr, Ctrl: Byte);
+  Var
+    vOfs : Word;
+
+  Begin
+    Asm
+      push  esi
+      push  edi
+      push  ebx
+      mov   eax,Row
+      dec   eax
+      mov   ecx,OpCrt.VirtualWidth
+      mul   ecx
+      mov   edi,Col
+      dec   edi
+      add   edi,eax
+      shl   edi,1
+      mov   vOfs,edi
+      add   edi,OpCrt.VirtualSegment
+
+      lea   esi,DWord Ptr &St
+
+      lodsb
+      movzx ecx,al
+      jcxz  @exit
+
+    @next:
+      mov   ah,attr
+      lodsb
+      cmp   al,20h
+      jae   @store
+      mov   ah,ctrl
+      add   al,40h      {Convert ^A to A, etc}
+
+    @store:
+      stosw
+      loop  @next
+
+    @exit:
+      pop   ebx
+      pop   edi
+      pop   esi
+    End;
+
+    If VirtualSegment = VideoSegment Then
+      SysTVShowBuf (vOfs, Length (St) Shl 1);
+  End;
+
+  Procedure FastWriteAttr (St: String; Row, Col: Word; AttrSt: String);
+  Var
+    vOfs : Word;
+
+  Begin
+    Asm
+      push  esi
+      push  edi
+      push  ebx
+      mov   eax,Row
+      dec   eax
+      mov   ecx,OpCrt.VirtualWidth
+      mul   ecx
+      mov   edi,Col
+      dec   edi
+      add   edi,eax
+      shl   edi,1
+      mov   vOfs,edi
+      add   edi,OpCrt.VirtualSegment
+      lea   esi,DWord Ptr &St
+      lea   edx,DWord Ptr AttrSt
+
+      lodsb
+      movzx ecx,al
+      jcxz  @exit
+      mov   ah,[edx]
+      cmp   ah,cl
+      jne   @exit
+      inc   edx
+
+    @next:
+      mov   ah,[edx]
+      inc   edx
+      lodsb
+      stosw
+      loop  @next
+
+    @exit:
+      pop   ebx
+      pop   edi
+      pop   esi
+    end;
+
+    If VirtualSegment = VideoSegment Then
+      SysTVShowBuf (vOfs, Length (St) Shl 1);
+  End;

@@ -1,0 +1,9 @@
+*.diz
+*.bat
+*.lst
+*.cfg
+*.pas
+*.vpo
+doc
+resource
+units

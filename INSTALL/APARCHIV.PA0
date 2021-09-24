@@ -1,0 +1,66 @@
+const
+  {+++ archive (LZH and ZIP) option flags +++}
+  arCreateDirs       = $0001;
+  arReadArcComments  = $0002;
+  arReadFileComments = $0004;
+  arStripPath        = $0008;
+  arCompressing      = $0100;
+  arDeleting         = $0200;
+  arNoDriveLetter    = $0400;
+  arRemoveDots       = $0800;
+
+  {+++ internal option flags +++}
+  arReadExtraField   = $8000;
+
+  DefArchiveOptions  : Word = arRemoveDots;
+  BadArchiveOptions  : Word = 0;
+
+const
+  arOutPath : PathStr = '';
+type
+  FileMaskNodePtr = ^FileMaskNode;
+  FileMaskNode =
+    record
+      DirPtr : StringPtr;
+      Name   : NameStr;
+      Ext    : ExtStr;
+      Next   : FileMaskNodePtr;
+    end;
+
+  FileMaskList =
+    record
+      Head, Tail : FileMaskNodePtr;
+    end;
+
+{$IFDEF UsePModeDLL}
+
+procedure InitFileMaskList(var FML : FileMaskList); Export;
+procedure DoneFileMaskList(var FML : FileMaskList); Export;
+function AppendFileMask(FM : PathStr; var FML : FileMaskList) : Boolean; Export;
+function MatchFileMask(FM : PathStr; var FML : FileMaskList) : Boolean; Export;
+procedure SortFileMaskList(var FML : FileMaskList); Export;
+procedure ExpandFileMaskList(var FML, ExpandedFML : FileMaskList); Export;
+procedure arOptionsOn(OptionFlags : Word); Export;
+procedure arOptionsOff(OptionFlags : Word); Export;
+function arOptionsAreOn(OptionFlags : Word) : Boolean; Export;
+procedure SetOutputPath(Path : PathStr); Export;
+procedure CreateOutputFile(var F : File; FName : PathStr); Export;
+function Percentage(V1, V2 : LongInt) : Byte; Export;                  {!!.01}
+
+{$ELSE}
+
+procedure InitFileMaskList(var FML : FileMaskList);
+procedure DoneFileMaskList(var FML : FileMaskList);
+function AppendFileMask(FM : PathStr; var FML : FileMaskList) : Boolean;
+function MatchFileMask(FM : PathStr; var FML : FileMaskList) : Boolean;
+procedure SortFileMaskList(var FML : FileMaskList);
+procedure ExpandFileMaskList(var FML, ExpandedFML : FileMaskList);
+procedure arOptionsOn(OptionFlags : Word);
+procedure arOptionsOff(OptionFlags : Word);
+function arOptionsAreOn(OptionFlags : Word) : Boolean;
+procedure SetOutputPath(Path : PathStr);
+procedure CreateOutputFile(var F : File; FName : PathStr);
+function Percentage(V1, V2 : LongInt) : Byte;                          {!!.01}
+
+{$ENDIF}
+

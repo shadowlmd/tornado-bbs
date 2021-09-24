@@ -1,0 +1,336 @@
+{*********************************************************}
+{*                    OPCRT.IN1 1.30                     *}
+{*     Copyright (c) TurboPower Software 1987, 1992.     *}
+{*                 All rights reserved.                  *}
+{*********************************************************}
+
+const
+  {tables for Hercules graphics}
+  HercTtable : array[0..11] of Byte = (
+    $61, $50, $52, $0F, $19, $06, $19, $19, $02, $0D, $0B, $0C);
+  HercGtable : array[0..11] of Byte = (
+    $35, $2D, $2E, $07, $5B, $02, $57, $57, $02, $03, $00, $00);
+
+  function HercPresent : Boolean;
+    {-Return true if a Hercules graphics card is present}
+  begin
+  {$IFDEF VIRTUALPASCAL}
+    HercPresent := False;
+  {$ELSE}
+    inline(
+      $31/$DB/               {xor bx,bx}
+      $CD/$11/               {int $11}
+      $25/$30/$00/           {and ax,$30     ;check equipment list}
+      $3D/$30/$00/           {cmp ax,$30     ;"switches" set for mono?}
+      $75/$18/               {jne done       ;no - quit}
+      $BA/$BA/$03/           {mov dx,$3BA    ;Take a reading}
+      $EC/                   {in al,dx}
+      $24/$80/               {and al,$80}
+      $88/$C4/               {mov ah,al      ;Save bit 7 for test}
+      $B9/$00/$80/           {mov cx,$8000   ;How many times to test}
+                             {Examine:}
+      $EC/                   {in al,dx       ;Take another reading}
+      $24/$80/               {and al,$80     ;Isolate bit 7}
+      $38/$E0/               {cmp al,ah}
+      $75/$05/               {jne herc       ;If bit 7 changes then it}
+      $E2/$F7/               {loop examine   ; is a Hercules}
+      $E9/$01/$00/           {jmp done       ;it must be something else}
+                             {Herc:}
+      $43/                   {inc bx         ;return true}
+                             {Done:}
+      $88/$5E/$FF);          {mov [bp-1],bl  ;set function result}
+  {$ENDIF}
+  end;
+
+  function WhichHercPrim : HercCardType;
+    {-Distinguish HGC, HGC+, and InColor card}
+  {$IFDEF VIRTUALPASCAL}
+    begin
+    end;
+  {$ELSE}
+  inline(
+    $BA/$BA/$03/             {mov dx,$3ba   ;read status port}
+    $EC/                     {in al,dx}
+    $88/$C4/                 {mov ah,al     ;result into AH}
+    $80/$E4/$70/             {and ah,$70    ;mask out bits 4-6}
+    $B0/$03/                 {mov al,3      ;assume HercInColor}
+    $80/$FC/$50/             {cmp ah,$50    ;just bits 4 and 6 set?}
+    $74/$09/                 {je done       ;if so, done}
+    $FE/$C8/                 {dec al        ;assume HercPlus}
+    $80/$FC/$10/             {cmp ah,$10    ;just bit 4 set?}
+    $74/$02/                 {je done       ;if so, done}
+    $FE/$C8);                {dec al        ;else, HercPlain}
+                             {done:}
+  {$ENDIF}
+
+  function WhichHercCard : HercCardType;
+    {-Returns Hercules card type}
+  begin
+    if (CurrentDisplay <> MonoHerc) or not HercPresent then
+      WhichHercCard := HercNone
+    else if (CurrentDisplay = MonoHerc) then
+      WhichHercCard := WhichHercPrim
+    else
+      WhichHercCard := HercPlain;
+  end;
+
+  procedure SwitchInColorCard(ColorOn : Boolean);
+    {-Activate or deactivate colors on a Hercules InColor card}
+  begin
+    {$IFNDEF VIRTUALPASCAL}
+    inline(
+      $8A/$66/<ColorOn/      {mov ah,[bp+<ColorOn]       ;AH = ColorOn}
+      $80/$F4/$01/           {xor ah,1                   ;flip bit 0}
+      $B1/$05/               {mov cl,5                   ;move it to bit 5}
+      $D2/$E4/               {shl ah,cl}
+      $A0/>HercExceptionReg/ {mov al,[>HercExceptionReg] ;get copy of HercExceptionReg}
+      $24/$1F/               {and al,$1F                 ;strip off attribute bit}
+      $08/$C4/               {or ah,al                   ;new exception register value}
+      $88/$26/>HercExceptionReg/ {mov [>HercExceptionReg],ah ;save exception register value}
+      $B0/$17/               {mov al,$17                 ;AL = exception register #}
+      $BA/$B4/$03/           {mov dx,$3B4                ;DX = I/O port}
+      $EF);                  {out dx,ax}
+  {$ENDIF}
+  end;
+
+  function HercGraphModePrim : Boolean;
+    {-Return True if a Hercules card is in graphics mode}
+  begin
+    {$IFDEF VIRTUALPASCAL}
+    HercGraphModePrim := False;
+    {$ELSE}
+    inline(
+      $30/$C0/               {XOR AL,AL}
+      $BA/$BA/$03/           {MOV DX,$03BA    ;display status port}
+                             {Wait1:          ;test for v-sync transition}
+      $EC/                   {IN AL,DX}
+      $A8/$80/               {TEST AL,$80     ;mask for v-sync}
+      $74/$FB/               {JZ Wait1}
+                             {Wait2:}
+      $EC/                   {IN AL,DX}
+      $A8/$80/               {TEST AL,$80     ;mask for v-sync}
+      $75/$FB/               {JNZ Wait2}
+      $30/$C0/               {XOR AL,AL       ;reset and Set Light Pen.}
+      $BA/$BB/$03/           {MOV DX,$03BB    ;reset light pen port}
+      $EE/                   {OUT DX,AL}
+      $EB/$00/               {JMP SHORT X1    ;Delay for AT}
+                             {X1:}
+      $BA/$B9/$03/           {MOV DX,$03B9    ;set light pen port}
+      $EE/                   {OUT DX,AL}
+      $B0/$10/               {MOV AL,16       ;Look in the 6845 for the offset}
+      $BA/$B4/$03/           {MOV DX,$03B4    ; into buffer when the light pen}
+      $EE/                   {OUT DX,AL       ; is tripped - high byte.}
+      $EB/$00/               {JMP SHORT X2    ;Delay for AT}
+                             {X2:}
+      $42/                   {INC DX}
+      $EC/                   {IN AL,DX}
+      $88/$C7/               {MOV BH,AL}
+      $B0/$11/               {MOV AL,17       ;Get low byte of light pen}
+      $BA/$B4/$03/           {MOV DX,$03B4    ; trip address}
+      $EE/                   {OUT DX,AL}
+      $EB/$00/               {JMP SHORT X3    ;Delay for AT}
+                             {X3:}
+      $42/                   {INC DX}
+      $EC/                   {IN AL,DX}
+      $88/$C3/               {MOV BL,AL       ;BX now contains Light Pen trip address}
+      $30/$C0/               {XOR AL,AL       ;assume text mode}
+      $81/$FB/$8E/$0B/       {CMP BX,$0B8E    ;If BX < threshold value - text mode}
+      $72/$02/               {JB HGMPdone     ;Jump to what should happen for text}
+      $FE/$C0/               {INC AL          ;return true for graph mode}
+                             {HGMPdone:}
+      $88/$46/$FF);          {MOV [BP-1],AL}
+  {$ENDIF}
+  end;
+
+  function HercGraphicsMode : Boolean;
+    {-Return True if a Hercules card is in graphics mode}
+  const
+    Votes = 5;               {keep it odd}
+  var
+    I, Graph : Byte;
+  begin
+    Graph := 0;
+    {run test several times--it doesn't always work, even on a true Herc}
+    for I := 1 to Votes do
+      if HercGraphModePrim then
+        Inc(Graph);
+    {if test succeeded more times than it failed, it's a Herc}
+    HercGraphicsMode := (Graph > (Votes shr 1));
+  end;
+
+  function HercModeTestWorks : Boolean;
+    {-Return True if HercGraphicsMode will work}
+  begin
+    {$IFDEF VIRTUALPASCAL}
+    HercModeTestWorks := True;
+    {$ELSE}
+    inline(
+      $30/$DB/               {XOR BL,BL     ;assume False}
+      $BA/$B9/$03/           {MOV DX,$03B9  ;set light pen address}
+      $EE/                   {OUT DX,AL}
+      $BA/$BA/$03/           {MOV DX,$03BA  ;display status port}
+      $EC/                   {IN AL,DX}
+      $A8/$02/               {TEST AL,2}
+      $74/$0E/               {JZ HMTWdone   ;If light pen stuck low, can't do mode test - abort}
+      $BA/$BB/$03/           {MOV DX,$03BB  ;reset light pen address}
+      $EE/                   {OUT DX,AL}
+      $BA/$BA/$03/           {MOV DX,$03BA  ;display status port}
+      $EC/                   {IN AL,DX}
+      $A8/$02/               {TEST AL,2}
+      $75/$02/               {JNZ HMTWdone  ;If light pen stuck high, can't do mode test - abort}
+      $FE/$C3/               {INC BL        ;test works}
+                             {HMTWdone:}
+      $88/$5E/$FF);          {MOV [BP-1],BL ;set function result}
+    {$ENDIF}
+  end;
+
+  procedure SetHercMode(GraphMode : Boolean; GraphPage : Byte);
+    {-Set Hercules card to graphics mode or text mode, and activate specified
+      graphics page (if switching to graphics mode).}
+  begin
+    {$IFNDEF VIRTUALPASCAL}
+    inline(
+      $EB/$21/               {JMP SHORT SetHercMode}
+                             {SetHercModePrim:}
+      $50/                   {PUSH AX                ;save screen mode}
+      $BA/$B8/$03/           {MOV DX,$03B8}
+      $EE/                   {OUT DX,AL              ;change mode with screen off}
+      $B9/$0C/$00/           {MOV CX,12              ;12 parameters to be output starting from}
+      $30/$E4/               {XOR AH,AH              ;  register 0}
+      $BA/$B4/$03/           {MOV DX,$03B4           ;index register}
+      $FC/                   {CLD                    ;go forward}
+                             {Parms:}
+      $88/$E0/               {MOV AL,AH              ;AL = 0}
+      $EE/                   {OUT DX,AL              ;output register number}
+      $42/                   {INC DX                 ;data register}
+      $AC/                   {LODSB                  ;next 6845 parameter}
+      $EE/                   {OUT DX,AL              ;output data}
+      $FE/$C4/               {INC AH                 ;next value}
+      $4A/                   {DEC DX                 ;back to index register}
+      $E2/$F5/               {LOOP Parms             ;repeat}
+      $BA/$B8/$03/           {MOV DX,$03B8}
+      $58/                   {POP AX                 ;get back screen mode}
+      $04/$08/               {ADD AL,8               ;turn screen back on}
+      $EE/                   {OUT DX,AL}
+      $C3/                   {RET}
+                             {SetHercMode:}
+      $BA/$BF/$03/           {MOV DX,$03BF           ;configuration port}
+      $B0/$01/               {MOV AL,1               ;allow graphics, page 0 only}
+      $EE/                   {OUT DX,AL}
+      $8A/$46/<GraphMode/    {MOV AL,[BP+<GraphMode]}
+      $08/$C0/               {OR  AL,AL              ;switching to graphics mode?}
+      $74/$1D/               {JZ  TMode              ;no - back to text}
+                             {;set graphics mode}
+      $B0/$02/               {MOV AL,2               ;select graphics mode}
+      $BE/>HercGtable/       {MOV SI,>HercGtable     ;point to graphics table}
+      $E8/$CA/$FF/           {CALL SetHercModePrim}
+                             {;need to set page 1 of graphics?}
+      $8A/$46/<GraphPage/    {MOV AL,[BP+<GraphPage] ;AL = Page number}
+      $08/$C0/               {OR AL,AL               ;is it 0?}
+      $74/$16/               {JZ SHMdone             ;if so, we're done}
+      $B0/$03/               {MOV AL,3}
+      $BA/$BF/$03/           {MOV DX,$03BF}
+      $EE/                   {OUT DX,AL              ;allow graphics, both pages}
+      $B0/$8A/               {MOV AL,$8A}
+      $BA/$B8/$03/           {MOV DX,$03B8}
+      $EE/                   {OUT DX,AL              ;set graphics mode, page 1}
+      $EB/$08/               {JMP SHORT SHMdone      ;finished}
+      {TMode:                 ;set text mode}
+      $B0/$20/               {MOV AL,$20             ;select text mode}
+      $BE/>HercTtable/       {MOV SI,>HercTtable     ;point SI to text table}
+      $E8/$AD/$FF);          {CALL SetHercModePrim}
+                             {SHMdone:}
+    {$ENDIF}
+  end;
+
+  function GetPageSegment(PageNo : Byte) : Word;
+    {-Get the video segment corresponding to the specified video page}
+  var
+    CrtLen : ^Word; {absolute $40 : $4C;} {!!.20}
+  begin
+    {$IFDEF VIRTUALPASCAL}
+    CrtLen := nil;
+    GetPageSegment := VideoSegment;
+    {$ELSE}
+    CrtLen := Ptr(BiosDataSele, $4C);                                   {!!.20}
+   GetPageSegment := VideoSegment;
+    case CurrentMode of
+      0..1 :
+        if (PageNo < 8) then
+          if CurrentDisplay > CGA then
+            GetPageSegment := $B800+(PageNo*(CrtLen^ div 16))           {!!.20}
+          else
+            GetPageSegment := $B800+(PageNo*$80);
+      2..3 :
+        if (PageNo < 4) then
+          {EGA is quirky about video pages}
+          if CurrentDisplay > CGA then
+            GetPageSegment := $B800+(PageNo*(CrtLen^ div 16))           {!!.20}
+          else
+            GetPageSegment := $B800+(PageNo*$100);
+    end;
+    {$ENDIF}
+  end;
+
+  function GetPagePointer(PageNo : Byte) : Pointer;
+    {-Get a pointer to the start of the specified video page}
+  begin
+{$IFDEF Dpmi}                                                            {!!.20}
+    GetPagePointer := Ptr( VideoSegment, 0 );                            {!!.20}
+{$ELSE}                                                                  {!!.20}
+  {$IFDEF VIRTUALPASCAL}
+    GetPagePointer := Ptr( VideoSegment );
+  {$ELSE}
+    GetPagePointer := Ptr( GetPageSegment(PageNo), 0 );
+  {$ENDIF}
+{$ENDIF}                                                                 {!!.20}
+  end;
+
+  procedure SetActivePage(PageNo : Byte);
+   {-Selects the video page that will be written to with subsequent operations
+     on the screen. Does not affect Write/Ln or Read/Ln.}
+  begin
+{$IFDEF VIRTUALPASCAL}
+    {!!More work};
+{$ELSE}
+{$IFDEF Dpmi}                                                            {!!.20}
+    if SetSegmentBaseAddr(VirtualSegment, Linear(Ptr(GetPageSegment(PageNo), 0))) = 0 then ; {!!.20}
+{$ELSE}                                                                  {!!.20}
+    VirtualSegment := GetPageSegment(PageNo);
+{$ENDIF}                                                                 {!!.20}
+{$ENDIF}
+  end;
+
+  procedure ClearPage(PageNo : Byte);
+    {-Clear the specified video page with TextChar and TextAttr}
+  var
+{$IFDEF Dpmi}                                                           {!!.20}
+    L : LongInt;                                                        {!!.20}
+{$ELSE}                                                                 {!!.20}
+    S : Word;
+{$ENDIF}                                                                {!!.20}
+  begin
+{$IFDEF VIRTUALPASCAL}
+{$ELSE}
+    {change active page}
+{$IFDEF Dpmi}                                                           {!!.20}
+    if GetSegmentBaseAddr(VirtualSegment, L) = 0 then ;                 {!!.20}
+{$ELSE}                                                                 {!!.20}
+    S := VirtualSegment;
+{$ENDIF}                                                                {!!.20}
+    SetActivePage(PageNo);
+
+    {clear the page}
+    FastFill(ScreenWidth*ScreenHeight, TextChar, 1, 1, TextAttr);
+
+    {reset TextChar}
+    TextChar := ' ';
+
+    {restore VirtualSegment}
+{$IFDEF Dpmi}                                                           {!!.20}
+    if SetSegmentBaseAddr(VirtualSegment, L) = 0 then ;                 {!!.20}
+{$ELSE}                                                                 {!!.20}
+    VirtualSegment := S;
+{$ENDIF}                                                                {!!.20}
+{$ENDIF}
+  end;

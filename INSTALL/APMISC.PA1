@@ -1,0 +1,326 @@
+function StatusStr(Code : Word) : String;
+  {-Returns a one-line msg for Code}
+var
+  S : String;
+
+  function Word2Str(W : Word) : String;
+  var
+    S : String;
+  begin
+    Str(W, S);
+    Word2Str := S;
+  end;
+
+begin
+  case Code mod 10000 of
+    ecOk :
+      S := 'Ok';
+
+    {DOS errors}
+    ecFileNotFound :
+      S := 'File not found';
+    ecPathNotFound :
+      S := 'Path not found';
+    ecTooManyFiles :
+      S := 'Too many open files';
+    ecAccessDenied :
+      S := 'File access denied';
+    ecInvalidHandle :
+      S := 'Invalid file handle';
+    ecOutOfMemory :
+      S := 'Insufficient memory';
+    ecInvalidDrive :
+      S := 'Invalid drive';
+    ecNoMoreFiles :
+      S := 'No more files';
+
+    {Turbo Pascal I/O errors}
+    ecDiskRead :
+      S := 'Attempt to read beyond end of file';
+    ecDiskFull :
+      S := 'Disk is full';
+    ecNotAssigned :
+      S := 'File not Assigned';
+    ecNotOpen :
+      S := 'File not open';
+    ecNotOpenInput :
+      S := 'File not open for input';
+    ecNotOpenOutput :
+      S := 'File not open for output';
+    ecInvalidFormat :
+      S := 'Invalid format for packed window';
+
+    {DOS critical errors}
+    ecWriteProtected :
+      S := 'Disk is write-protected';
+    ecUnknownUnit :
+      S := 'Unknown disk unit';
+    ecDriveNotReady :
+      S := 'Drive is not ready';
+    ecUnknownCommand :
+      S := 'Unknown command';
+    ecCrcError :
+      S := 'Data error';
+    ecBadStructLen :
+      S := 'Bad request structure length';
+    ecSeekError :
+      S := 'Seek error';
+    ecUnknownMedia :
+      S := 'Unknown media type';
+    ecSectorNotFound :
+      S := 'Disk sector not found';
+    ecOutOfPaper :
+      S := 'Printer is out of paper';
+    ecDeviceWrite :
+      S := 'Device write error';
+    ecDeviceRead :
+      S := 'Device read error';
+    ecHardwareFailure :
+      S := 'General failure';
+
+    {+++Capacity or environmental errors (2900-2999)+++}
+
+    {APUART port errors}
+    ecNoMorePorts :
+      S := 'Cannot open port, no slots available';
+    ecOverrunError :
+      S := 'UART receiver overrun';
+    ecParityError :
+      S := 'UART receiver parity error';
+    ecFramingError :
+      S := 'UART receiver framing error';
+
+    {APINT14 port errors}
+    ecTransmitFailed :
+      S := 'Int14 transmit failed';
+    ecUartError :
+      S := 'Int14 receive failed';
+
+    {APCOM/OOCOM errors/status}
+    ecBlockIncomplete :
+      S := 'Block shorter than requested';
+    ecBufferIsFull :
+      S := 'No room for new char in buffer';
+    ecBufferIsEmpty :
+      S := 'No characters to get';
+    ecTimeout :
+      S := 'Timed out waiting for data';
+    ecStringIncomplete :
+      S := 'String shorter than requested';
+    ecStringOverrun :
+      S := 'String longer than 255';
+    ecUserAbort :
+      S := 'User aborted while waiting';
+
+    {APMODEM/OOMODEM errors}
+    ecTableFull :
+      S := 'No room in table to add new entry';
+    ecNullCommand :
+      S := 'Modem - no command registered';
+
+    {Tracing/EventFile file errors}
+    ecEventFileError :
+      S := 'Failed to open or write to the event file';
+    ecTraceFileError :
+      S := 'Failed to open or write to the trace file';
+
+    {+++Warnings or user errors (7900-7999)+++}
+    {This category not current used by Async Professional}
+
+    {+++Programmer errors (8900-8999)+++}
+
+    {APCOM/OOCOM port errors}
+    ecBadPortNumber :
+      S := 'Out-of-range port number';
+    ecOutofRange :
+      S := 'General out-of-range error';
+    ecPortNotOpen :
+      S := 'Port not open';
+    ecInvalidBaudRate :
+      S := 'Bad baud rate for this device';
+    ecInvalidArgument :
+      S := 'General programming error';
+    ecNoDevice :
+      S := 'No device layer installed';
+    ecNotaUart :
+      S := 'No UART at this address';
+    ecInvalidParity :
+      S := 'Bad parity option for this device';
+    ecBadFileList :
+      S := 'No end of list marker found in file list';
+    ecNotBuffered :
+      S := 'Operation only allowed on buffered ports';
+    ecNotSupported :
+      S := 'Function not supported by device-layer';
+
+    {+++Status codes (9900-9999)+++}
+
+    {APXMODEM/OOABSPCL status codes}
+    ecInitFail :
+      S := 'Xmodem init failed';
+    ecInitCancel :
+      S := 'Xmodem init was canceled on request';
+    ecCancelRequested :
+      S := 'Cancel requested';
+    ecError :
+      S := 'Modem returned error (or other misc errors)';
+    ecDuplicateBlock :
+      S := 'Duplicate block received';
+    ecSequenceError :
+      S := 'Wrong block number received';
+    ecDirNotFound :
+      S := 'Directory not found in protocol transmit';
+    ecNoMatchingFiles :
+      S := 'No matching files in protocol transmit';
+    ecLongPacket :
+      S := 'Long packet received during protocol';
+    ecEndFile :
+      S := 'End of transmitted file';
+    ecHandshakeInProgress :
+      S := 'Protocol handshake in progress';
+    ecFileRenamed :
+      S := 'Incoming file was renamed';
+    ecFileAlreadyExists :
+      S := 'Incoming file already exists';
+    ecInvalidFilesize :
+      S := 'Header has bad file size';
+    ecInvalidDateTime :
+      S := 'Header has bad date/time';
+    ecUnexpectedChar :
+      S := 'Unexpected char during protocol';
+    ecBlockCheckError :
+      S := 'Incorrect CRC or checksum received';
+    ecNoSearchMask  :
+      S := 'No search mask specified for transmit';
+    ecNoFilename :
+      S := 'No filename specified';
+    ecAsciiReceiveInProgress :
+      S := 'ASCII receive - Press <ESC> to end';
+    ecFileRejected :
+      S := 'Received file rejected';
+    ecTooManyErrors :
+      S := 'Too many errors received during protocol';
+
+    {APZMODEM/OOZMODEM status codes}
+    ecGotCrcE :
+      S := 'Zmodem - got CrcE DataSubpacket';
+    ecGotCrcW :
+      S := 'Zmodem - got CrcW DataSubpacket';
+    ecGotCrcQ :
+      S := 'Zmodem - got CrcQ DataSubpacket';
+    ecGotCrcG :
+      S := 'Zmodem - got CrcG DataSubpacket';
+    ecGarbage :
+      S := 'Zmodem - got garbage from remote';
+    ecSkipFile :
+      S := 'Zmodem - skip file';
+    ecBadPosition :
+      S := 'Zmodem - bad file position';
+    ecFileDoesntExist :
+      S := 'Zmodem - specified file does not exist';
+    ecCantWriteFile :
+      S := 'Zmodem - not allowed to overwrite file';
+    ecFailedToHandshake :
+      S := 'Zmodem - never got proper handshake';
+    ecNoFilesToReceive :
+      S := 'Zmodem - no files to receive';
+
+    {APBPLUS/OOBPLUS status codes}
+    ecResync     :
+      S := 'Resyncing with host';
+    ecWaitACK    :
+      S := 'Host busy, waiting';
+    ecDropout    :
+      S := 'Unexpected break in connection';
+    ecHostCan    :
+      S := 'Host cancelled transfer';
+    ecTryResume  :
+      S := 'Attempting resume';
+    ecHostResume :
+      S := 'Host verifying resume request';
+    ecResumeOK   :
+      S := 'Resuming partial transfer';
+    ecResumeBad  :
+      S := 'Host refused resume request';
+    ecUnPacket   :
+      S := 'Unknown packet type received';
+
+    {APMODEM/OOMODEM status codes}
+    ecUnknownModemResult :
+      S := 'Unexpected data in modem result';
+    ecConnect :
+      S := 'Modem response - CONNECT';
+    ecRing :
+      S := 'Modem response - RING';
+    ecNoCarrier :
+      S := 'Modem response - NO CARRIER';
+    ecNoDialTone :
+      S := 'Modem response - NO DIALTONE';
+    ecBusy :
+      S := 'Modem response - BUSY';
+    ecNoAnswer :
+      S := 'Modem response - NO ANSWER';
+    ecRinging :
+      S := 'Modem response - RINGING';
+    ecVoice :
+      S := 'Modem response - VOICE';
+
+    {APFAX error codes}
+    ecFaxVoiceCall :
+      S := 'Call is VOICE';
+    ecFaxDataCall :
+      S := 'Call is DATA';
+    ecFaxBusy :
+      S := 'Called modem is busy';
+    ecFaxNoFontFile :
+      S := 'Could not find font file';
+    ecFaxNoCASManager :
+      S := 'CASMGR TSR not installed';
+    ecFaxInitError :
+      S := 'Unexpected response in init';
+    ecFaxTrainError :
+      S := 'Failed to train with remote modem';
+    ecFaxSessionError :
+      S := 'Error during session';
+
+    {Archive status messages}
+    ecUnknownMethod :
+      S := 'Unknown compression method';
+    ecFileEncrypted :
+      S := 'Cannot extract, file is encrypted';
+    ecBadFileCRC :
+      S := 'Bad CRC, file is probably corrupted';
+    ecCannotCreate :
+      S := 'Unable to create output file';
+    ecBadFileFormat :
+      S := 'Bad archive file format';
+    ecNotAnLzhFile :
+      S := 'Not an LZH file';
+    ecNotAZipFile :
+      S := 'Not a ZIP file';
+
+    else
+      S := 'Unknown error code ' + Word2Str(Code);
+  end;
+  StatusStr := S;
+end;
+
+{$IFDEF VirtualPascal}
+function UpdateCrc32(CurByte : Byte; CurCrc : LongInt) : LongInt; ASSEMBLER;
+  (* Model for assembly code below
+  UpdateCrc32 := Crc32Table[Byte(CurCrc xor LongInt(CurByte))] xor
+                 ((CurCrc shr 8) and $00FFFFFF);
+  *)
+  ASM
+                MOV     EAX,CurCrc
+                MOVZX   ECX,CurByte
+                XOR     EAX,ECX
+                MOV     ECX,OFFSET Crc32Table
+                MOVZX   EAX,AL
+                MOV     EAX,[ECX+EAX*4]
+                MOV     ECX,CurCrc
+                SHR     ECX,8
+                XOR     EAX,ECX
+  END;
+{$ENDIF - VirtualPascal}
+
