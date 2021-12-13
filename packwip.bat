@@ -37,7 +37,7 @@ call build_vp.bat tf
 call build_vp.bat res
 echo Tornado/386 %VERSION%/WIP/%DATE%>out\file_id.diz
 echo Executables and resources only>>out\file_id.diz
-rar a -cl -k -ep -agymmdd{f} Release\tn out\file_id.diz bin\* doc\tornado\* d:\dos\dos32a\binw\dos32a.exe
+rar a -cl -k -ep -agymmdd{f} Release\tn out\file_id.diz bin\* doc\tornado\* d:\tools\dos32a\binw\dos32a.exe
 goto end
 
 :td

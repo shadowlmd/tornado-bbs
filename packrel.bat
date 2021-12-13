@@ -36,7 +36,7 @@ call build_vp.bat res release
 call build_bp.bat ud release
 echo Tornado/386 %VERSION%/Release>out\file_id.diz
 echo Executables and resources only>>out\file_id.diz
-rar a -cl -k -ep Release\tornado-%VERSION%-386.rar out\file_id.diz bin\* bin\useredit.exe doc\tornado\* d:\dos\dos32a\binw\dos32a.exe
+rar a -cl -k -ep Release\tornado-%VERSION%-386.rar out\file_id.diz bin\* bin\useredit.exe doc\tornado\* d:\tools\dos32a\binw\dos32a.exe
 goto end
 
 :td

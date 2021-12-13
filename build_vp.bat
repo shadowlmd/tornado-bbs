@@ -69,7 +69,7 @@ out\cdate.exe UNITS\INC\cdate.inc
 rem tornado
 %VPC% -Vvp_d32.vpo -B -CW:D32:DPMI32 -DMSDOS tornado.pas
 if errorlevel 1 goto error
-d:\prog\pascal\vp_d32\bin.w32\pe2le.exe OUT\tornado.exe BIN\tornado.exe /S:D:\dos\dos32a\binw\stub32a.exe /Q
+d:\prog\pascal\vp_d32\bin.w32\pe2le.exe OUT\tornado.exe BIN\tornado.exe /S:D:\tools\dos32a\binw\stub32a.exe /Q
 echo.
 echo Don't forget to compile resources ;)
 goto end
