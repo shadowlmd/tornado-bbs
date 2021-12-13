@@ -258,7 +258,7 @@ type
   procedure SetFromAddress(var Address: TAddress; const FreshMSGID: Boolean); virtual;
   procedure SetToAddress(var Address: TAddress); virtual;
   procedure SetFromAndToAddress(var FromAddress, ToAddress: TAddress; const FreshMSGID: Boolean); virtual;
-  procedure GetStringPChar(Line: PChar; MaxLen: Word); virtual;
+  procedure GetStringPChar(Line: PChar; MaxLen: Longint); virtual;
   procedure GetString(var Line: String); virtual;
   procedure PutStringPChar(Line: PChar); virtual;
   procedure PutString(const Line: String); virtual;
@@ -277,7 +277,7 @@ type
   procedure SetArrivedDateTime(var DateTime: TMessageBaseDateTime); virtual;
   function WriteMessage: Boolean; virtual;
   function WriteMessageHeader: Boolean; virtual;
-  function GetKludgePChar(const Name, Destination: PChar; const MaxLen: Word): Boolean; virtual;
+  function GetKludgePChar(const Name, Destination: PChar; const MaxLen: Longint): Boolean; virtual;
   function GetKludge(const Name: String; var Destination: String): Boolean; virtual;
   procedure SetKludgePChar(const Name, Value: PChar); virtual;
   procedure SetKludge(const Name, Value: String); virtual;
@@ -597,7 +597,7 @@ procedure TMessageBase.SetFromAndToAddress(var FromAddress, ToAddress: TAddress;
   SetToAddress(ToAddress);
  end;
 
-procedure TMessageBase.GetStringPChar(Line: PChar; MaxLen: Word);
+procedure TMessageBase.GetStringPChar(Line: PChar; MaxLen: Longint);
  const
   BufferSize = 256;
  var
@@ -645,20 +645,14 @@ procedure TMessageBase.GetStringPChar(Line: PChar; MaxLen: Word);
    for K:=1 to Size do
     if Buffer[K] in [#13, #10] then
      begin
+      if (Buffer[K] = #13) and (Buffer[K + 1] = #10) and (SavePos + K < StreamSize) then
+        MessageText^.Seek(SavePos + K + 1)
+      else
+        MessageText^.Seek(SavePos + K);
+
       Buffer[K]:=#0;
 
-      if Buffer[K + 1] = #10 then
-       begin
-        PutBuffer;
-
-        MessageText^.Seek(SavePos + K + 1);
-       end
-      else
-       begin
-        PutBuffer;
-
-        MessageText^.Seek(SavePos + K);
-       end;
+      PutBuffer;
 
       Exit;
      end;
@@ -780,7 +774,7 @@ function TMessageBase.WriteMessageHeader: Boolean;
   Abstract;
  end;
 
-function TMessageBase.GetKludgePChar(const Name, Destination: PChar; const MaxLen: Word): Boolean;
+function TMessageBase.GetKludgePChar(const Name, Destination: PChar; const MaxLen: Longint): Boolean;
  var
   NameL: Integer;
  begin
