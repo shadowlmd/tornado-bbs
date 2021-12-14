@@ -57,7 +57,7 @@ call build_bp.bat res
 call build_vp.bat dll
 echo Tornado/DPMI %VERSION%/WIP/%DATE%>out\file_id.diz
 echo Executables and resources only>>out\file_id.diz
-rar a -cl -k -ep -agymmdd{p} Release\tn out\file_id.diz bin\* doc\tornado\*
+rar a -cl -k -ep -agymmdd{p} Release\tn out\file_id.diz bin\* doc\tornado\* d:\dos\rtm.exe d:\dos\dpmi16bi.ovl
 goto end
 
 :uw
