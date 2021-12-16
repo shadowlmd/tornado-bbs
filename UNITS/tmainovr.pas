@@ -2790,8 +2790,9 @@ Begin
   If Language <> Nil Then
   Begin
     ExecScript ('normexit ' + Long2Str (ExitCode));
-    mL_SendMsg (0, trcSysMsgPrefix + '** ' + R. Name + lang (laTRCline) +
-      Long2Str (BbsLine) + lang (laTRCleftBBS), mtConference);
+    If Not Registering Then
+      mL_SendMsg (0, trcSysMsgPrefix + '** ' + R. Name + lang (laTRCline) +
+        Long2Str (BbsLine) + lang (laTRCleftBBS), mtConference);
   End;
 
   If TransferTime > 0 Then
