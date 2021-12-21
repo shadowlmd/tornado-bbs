@@ -2790,7 +2790,7 @@ Begin
   If Language <> Nil Then
   Begin
     ExecScript ('normexit ' + Long2Str (ExitCode));
-    If Not Registering Then
+    If Not Registering And Is_User (R. Name, Cnf. Aliases) Then
       mL_SendMsg (0, trcSysMsgPrefix + '** ' + R. Name + lang (laTRCline) +
         Long2Str (BbsLine) + lang (laTRCleftBBS), mtConference);
   End;
