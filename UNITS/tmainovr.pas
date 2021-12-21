@@ -2787,7 +2787,7 @@ Begin
   Until Not ThreadLocked;
 {$ENDIF}
 
-  If Language <> Nil Then
+  If (Language <> Nil) and (Language^. Count > 0) Then
   Begin
     ExecScript ('normexit ' + Long2Str (ExitCode));
     If Not Registering And Is_User (R. Name, Cnf. Aliases) Then
