@@ -456,6 +456,8 @@ const
  D0            = 1461;
  D1            = 146097;
  D2            = 1721119;
+ SecsDelta     = 2145916800;
+ DaysDelta     = 24837;
 
 {* Common stuff *}
 
@@ -492,7 +494,7 @@ destructor TMessageBaseStream.Done;
 
 procedure TMessageBaseStream.CopyFrom(var S: TMessageBaseStream; Count: Longint);
  var
-  N: Longint;
+  N: Word;
   Buffer: Array[0..1023] Of Byte;
  begin
   while Count > 0 do
@@ -1041,7 +1043,12 @@ procedure UnixDateTimeToMessageBaseDateTime(SecsPast: LongInt; var DateTime: TMe
   DateNum: LongInt;
   Year, Month, Day: Word;
  begin
-  Datenum:=(SecsPast div 86400) + c1970;
+  if SecsPast < 0 then
+  begin
+   Dec(SecsPast, SecsDelta);
+   Datenum:=(SecsPast div 86400) + c1970 + DaysDelta;
+  end else
+   Datenum:=(SecsPast div 86400) + c1970;
 
   JulianToGregorian(DateNum, Year, Month, Day);
 
