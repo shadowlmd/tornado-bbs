@@ -1268,6 +1268,7 @@ Var
   i, j, a, Groups   : Integer;
   OldGroup, OldArea : Word;
   Found, Finish     : Boolean;
+  UpName, UpAlias   : PString;
 
   Procedure ReadFound;
   Var
@@ -1338,6 +1339,9 @@ Begin
   OldGroup := R. MsgGroup;
   OldArea := R. MsgArea;
 
+  UpName := NewStr (UpString (Trim (R. Name)));
+  UpAlias := NewStr (UpString (Trim (R. Alias)));
+
   OpenMsgGroups;
   OpenMsgAreas;
   SetMsgGroup (0);
@@ -1389,7 +1393,7 @@ Begin
         Msg^. OpenMessageHeader;
         H^. MsgTo := UpString (Trim (Msg^. GetTo));
         Msg^. CloseMessage;
-        If (H^. MsgTo = UpString (R. Name)) Or (H^. MsgTo = UpString (R. Alias)) Then
+        If ((UpName <> Nil) And (H^. MsgTo = UpName^)) Or ((UpAlias <> Nil) And (H^. MsgTo = UpAlias^)) Then
           PrivNumsColl^. Insert (Pointer (Msg^. Current));
         Msg^. SeekNext;
       End;
@@ -1410,6 +1414,9 @@ Begin
       CloseMessageBase (Msg);
     End;
   End;
+
+  DisposeStr (UpName);
+  DisposeStr (UpAlias);
 
   Dispose (H);
   FreeMem (LineBuf, MaxLineSize);
