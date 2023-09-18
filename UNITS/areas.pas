@@ -75,8 +75,8 @@ Function  PostMsg (PostMode: tPostMode; ToUser, {eMail,} Subj: String; Const Tpl
 Procedure PrePostMsg (Const Param, Tpl: String);
 Procedure Msg2SysOp (Const Subj, Tpl: String);
 
-Procedure PostFile (Const FileName: PathStr; AbsoluteNum: Word;
-          Const FromName, ToName, mSubj: String; OrigAddr, DestAddr: TAddress;
+Procedure PostFile (PostMode: tPostMode; Const FileName: PathStr; AbsoluteNum: Word;
+          Const FromName, ToName, mSubj, cReply: String; OrigAddr, DestAddr: TAddress;
           Options: Byte);
 Procedure TypeFile (Const FileName: PathStr);
 
@@ -659,8 +659,8 @@ Begin
             Else Options := 0;
     ParseStrAddr (RelativeAddr (WToAddr, MsgArea. Address), DestAddr);
 
-    PostFile (TmpTextName, MtoAbs (R. MsgGroup, R. MsgArea), R. Name, ToUser,
-      Subj, MsgArea. Address, DestAddr, Options);
+    PostFile (PostMode, TmpTextName, MtoAbs (R. MsgGroup, R. MsgArea), R. Name,
+      ToUser, Subj, H^. MSGID, MsgArea. Address, DestAddr, Options);
 
     tDeleteFile (TmpTextName);
     Inc (Sys. MsgsPosted);
@@ -720,6 +720,9 @@ Begin
     Msg^. SetAttribute (maReceived, True);
     Msg^. WriteMessageHeader;
   End;
+
+  If Msg^. GetKludge (#1'MSGID', S) Then
+    H^. MSGID := Copy (S, 9, 255);
 
   Msg^. CloseMessage;
 
@@ -1883,6 +1886,8 @@ Begin
 
   Msg^. SetBaseType (MsgArea. AreaType);
   Msg^. CreateNewMessage;
+  If (PostMode = pmReply) And (cReply <> '') Then
+    Msg^. SetKludge (#1'REPLY:', #1'REPLY: ' + cReply);
   Msg^. SetFrom (FromName);
   Msg^. SetTo (ToName);
   Msg^. SetSubject (mSubj);

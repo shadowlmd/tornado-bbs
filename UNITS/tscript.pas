@@ -3715,8 +3715,8 @@ Begin
                   S := StrExpression (Trim (ExtractAscii (4, S, CommaOnly,
                     '"')), True);
 
-                  PostFile (Parameter, MtoAbs (R. MsgGroup, R. MsgArea), Par1,
-                    Par2, S, MsgArea. Address, MsgArea. Address, pfAutoOpen +
+                  PostFile (pmNew, Parameter, MtoAbs (R. MsgGroup, R. MsgArea), Par1,
+                    Par2, S, '', MsgArea. Address, MsgArea. Address, pfAutoOpen +
                     pfUseDefaultAddr);
                 End;
 
