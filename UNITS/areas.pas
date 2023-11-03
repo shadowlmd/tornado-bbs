@@ -264,7 +264,9 @@ Begin
   If Make Then B := OpenOrCreateMessageBase (Msg, AreaID)
           Else B := OpenMessageBase (Msg, AreaID);
 
-  If Not B Then
+  If B Then
+    Msg^. SetBaseType (MsgArea. AreaType)
+  Else
     If ErrorReport Then
     Begin
       If R. HotKeys Then
@@ -272,8 +274,6 @@ Begin
       Message (lang (laMsgOpenError));
       LogWrite ('!', sm (smMAreaOpenErr) + ZeroMsg (MsgArea. Name, True));
     End;
-
-  Msg^. SetBaseType (MsgArea. AreaType);
 
   OpenMessageArea := B;
 End;
@@ -522,6 +522,11 @@ Begin
     If (Pos ('@', ToUser) <> 0) And (MsgArea. GateWay <> '') Then
     Begin
       WToAddr := RelativeAddr (MsgArea. GateWay, MsgArea. Address);
+      ComWriteLn (WToAddr, 0);
+    End Else
+    If PostMode = pmReply Then
+    Begin
+      WToAddr := RelativeAddr (AddressToStrEx (H^. FromAddr), MsgArea. Address);
       ComWriteLn (WToAddr, 0);
     End Else
     Begin
