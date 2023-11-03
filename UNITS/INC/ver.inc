@@ -20,7 +20,7 @@ Const
                           {$ENDIF}
                           {$ENDIF}
 
-                          + ' 1.71.2' +
+                          + ' 1.71.3' +
                           {$IFDEF DEBUG}
                           '/WIP/' +
                           {$I cdate.inc}

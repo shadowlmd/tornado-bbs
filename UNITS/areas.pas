@@ -273,6 +273,8 @@ Begin
       LogWrite ('!', sm (smMAreaOpenErr) + ZeroMsg (MsgArea. Name, True));
     End;
 
+  Msg^. SetBaseType (MsgArea. AreaType);
+
   OpenMessageArea := B;
 End;
 
@@ -1884,7 +1886,6 @@ Begin
     If Not OpenMessageArea (False, True) Then
       Goto EndOfProc;
 
-  Msg^. SetBaseType (MsgArea. AreaType);
   Msg^. CreateNewMessage;
   If (PostMode = pmReply) And (cReply <> '') Then
     Msg^. SetKludge (#1'REPLY:', #1'REPLY: ' + cReply);
