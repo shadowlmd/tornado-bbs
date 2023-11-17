@@ -1930,7 +1930,7 @@ Begin
     (eMail <> '') And
     (AddressToStrEx (DestAddr) = MsgArea. GateWay) Then
   Begin
-    Msg^. PutString ('To: ' + ToName + ' <' + eMail + '>');
+    Msg^. PutString ('To: "' + ToName + '" <' + eMail + '>');
     Msg^. PutString ('');
   End;
 
