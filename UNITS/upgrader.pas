@@ -215,7 +215,7 @@ Begin
       If FileExists (UR. FileName) Then
         PostFile (pmNew, UR. FileName, Str2Long (ExtractWord (2, UR. InformVia,
           BracketsOnly)), Cnf. SysOp, R. Name,
-          'Message from the Tornado upgrade manager', '', MsgArea. Address,
+          'Message from the Tornado upgrade manager', '', '', MsgArea. Address,
           MsgArea. Address, pfAutoOpen+pfUpgrader+pfUseDefaultAddr)
       Else
         LogWrite ('!', sm (smFile) + UR. FileName + sm (smNotFound));

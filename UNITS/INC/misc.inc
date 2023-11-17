@@ -243,7 +243,8 @@ Type
    MsgDateMBDT       : TMessageBaseDateTime;
    MsgDate           : DateTime;
    MsgFrom, MsgTo,
-   MsgSubj, MSGID    : String [80];
+   MsgSubj, MSGID,
+   eMail             : String [80];
  End;
 
  tMsgGroup = Record

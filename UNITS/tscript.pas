@@ -3716,7 +3716,7 @@ Begin
                     '"')), True);
 
                   PostFile (pmNew, Parameter, MtoAbs (R. MsgGroup, R. MsgArea), Par1,
-                    Par2, S, '', MsgArea. Address, MsgArea. Address, pfAutoOpen +
+                    Par2, S, '', '', MsgArea. Address, MsgArea. Address, pfAutoOpen +
                     pfUseDefaultAddr);
                 End;
 

@@ -790,7 +790,7 @@ Begin
           Close (FMsg);
 
           PostFile (pmNew, Cnf. DoorInfoDir + 'msgtext.tor', AreaNum, MsgFrom, MsgTo,
-            MsgSubj, '', MsgArea. Address, MsgArea. Address, pfAutoOpen +
+            MsgSubj, '', '', MsgArea. Address, MsgArea. Address, pfAutoOpen +
             pfUseDefaultAddr);
 
           Inc (Posted);

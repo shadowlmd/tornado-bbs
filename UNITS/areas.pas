@@ -76,7 +76,7 @@ Procedure PrePostMsg (Const Param, Tpl: String);
 Procedure Msg2SysOp (Const Subj, Tpl: String);
 
 Procedure PostFile (PostMode: tPostMode; Const FileName: PathStr; AbsoluteNum: Word;
-          Const FromName, ToName, mSubj, cReply: String; OrigAddr, DestAddr: TAddress;
+          Const FromName, ToName, mSubj, cReply, eMail: String; OrigAddr, DestAddr: TAddress;
           Options: Byte);
 Procedure TypeFile (Const FileName: PathStr);
 
@@ -667,7 +667,7 @@ Begin
     ParseStrAddr (RelativeAddr (WToAddr, MsgArea. Address), DestAddr);
 
     PostFile (PostMode, TmpTextName, MtoAbs (R. MsgGroup, R. MsgArea), R. Name,
-      ToUser, Subj, H^. MSGID, MsgArea. Address, DestAddr, Options);
+      ToUser, Subj, H^. MSGID, H^. eMail, MsgArea. Address, DestAddr, Options);
 
     tDeleteFile (TmpTextName);
     Inc (Sys. MsgsPosted);
@@ -730,6 +730,13 @@ Begin
 
   If Msg^. GetKludge (#1'MSGID', S) Then
     H^. MSGID := Copy (S, 9, 255);
+
+  If (MsgArea. AreaType = btNetmail) And
+    Msg^. GetKludge (#1'REPLYADDR', S) Then
+    If Pos('<', S) <> 0 Then
+      H^. eMail := Trim (ExtractWord (2, S, ['<', '>']))
+    Else
+      H^. eMail := Trim (S);
 
   Msg^. CloseMessage;
 
@@ -1403,7 +1410,8 @@ Begin
         Msg^. OpenMessageHeader;
         H^. MsgTo := UpString (Trim (Msg^. GetTo));
         Msg^. CloseMessage;
-        If ((UpName <> Nil) And (H^. MsgTo = UpName^)) Or ((UpAlias <> Nil) And (H^. MsgTo = UpAlias^)) Then
+        If ((UpName <> Nil) And (H^. MsgTo = UpName^)) Or
+          ((UpAlias <> Nil) And (H^. MsgTo = UpAlias^)) Then
           PrivNumsColl^. Insert (Pointer (Msg^. Current));
         Msg^. SeekNext;
       End;
@@ -1915,6 +1923,16 @@ Begin
     S := S + ' upgrade manager';
 
   Msg^. PutString (S);
+
+  If (MsgArea. AreaType = btNetmail) And
+    (PostMode = pmReply) And
+    (MsgArea. GateWay <> '') And
+    (eMail <> '') And
+    (AddressToStrEx (DestAddr) = MsgArea. GateWay) Then
+  Begin
+    Msg^. PutString ('To: ' + ToName + ' <' + eMail + '>');
+    Msg^. PutString ('');
+  End;
 
   While Not EoF (F) Do
   Begin
