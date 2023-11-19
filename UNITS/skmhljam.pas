@@ -620,7 +620,8 @@ function TJamMessageBase.OpenMessage: Boolean;
    end;
 
   if JamInfo.SourceAddress.Zone <> 0 then
-   SetFromAddress(JamInfo.SourceAddress, False);
+   if not GetKludge(#1'MSGID:', S) then
+     SetFromAddress(JamInfo.SourceAddress, False);
 
   if JamInfo.DestinationAddress.Zone <> 0 then
    SetToAddress(JamInfo.DestinationAddress);
@@ -730,7 +731,8 @@ function TJamMessageBase.OpenMessageHeader: Boolean;
    end;
 
   if JamInfo.SourceAddress.Zone <> 0 then
-   SetFromAddress(JamInfo.SourceAddress, False);
+   if not GetKludge(#1'MSGID:', S) then
+     SetFromAddress(JamInfo.SourceAddress, False);
 
   if JamInfo.DestinationAddress.Zone <> 0 then
    SetToAddress(JamInfo.DestinationAddress);
