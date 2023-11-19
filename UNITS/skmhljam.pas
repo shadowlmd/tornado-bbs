@@ -619,13 +619,6 @@ function TJamMessageBase.OpenMessage: Boolean;
     Inc(Count);
    end;
 
-  if JamInfo.SourceAddress.Zone <> 0 then
-   if not GetKludge(#1'MSGID:', S) then
-     SetFromAddress(JamInfo.SourceAddress, False);
-
-  if JamInfo.DestinationAddress.Zone <> 0 then
-   SetToAddress(JamInfo.DestinationAddress);
-
   GetMessageTextStream^.Seek(0);
 
   OpenMessage:=True;
@@ -730,13 +723,6 @@ function TJamMessageBase.OpenMessageHeader: Boolean;
     Inc(Count);
    end;
 
-  if JamInfo.SourceAddress.Zone <> 0 then
-   if not GetKludge(#1'MSGID:', S) then
-     SetFromAddress(JamInfo.SourceAddress, False);
-
-  if JamInfo.DestinationAddress.Zone <> 0 then
-   SetToAddress(JamInfo.DestinationAddress);
-
   GetMessageTextStream^.Seek(0);
 
   OpenMessageHeader:=True;
@@ -798,22 +784,26 @@ procedure TJamMessageBase.GetFromAddress(var Address: TAddress);
  begin
   ClearAddress(Address);
 
-  inherited GetFromAddress(Address);
+  if JamInfo.SourceAddress.Zone <> 0 then
+   Address := JamInfo.SourceAddress
+  else
+   inherited GetFromAddress(Address);
  end;
 
 procedure TJamMessageBase.GetToAddress(var Address: TAddress);
  begin
   ClearAddress(Address);
 
-  inherited GetToAddress(Address);
+  if JamInfo.DestinationAddress.Zone <> 0 then
+   Address := JamInfo.DestinationAddress
+  else
+   inherited GetToAddress(Address);
  end;
 
 procedure TJamMessageBase.GetFromAndToAddress(var FromAddress, ToAddress: TAddress);
  begin
-  ClearAddress(FromAddress);
-  ClearAddress(ToAddress);
-
-  inherited GetFromAndToAddress(FromAddress, ToAddress);
+  GetFromAddress(FromAddress);
+  GetToAddress(ToAddress);
  end;
 
 function TJamMessageBase.GetAttribute(Attribute: Longint): Boolean;
