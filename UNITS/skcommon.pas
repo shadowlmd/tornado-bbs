@@ -743,9 +743,9 @@ function ExtractWord(N: Byte; const S: String; WordDelims: TCharSet): String;
         {$IFDEF DELPHI}
         SetLength(Result, Len);
         {$ELSE}
-        ExtractWord[0] := Char(Len);
+        ExtractWord[0]:=Char(Len);
         {$ENDIF}
-        ExtractWord[Len] := S[I];
+        ExtractWord[Len]:=S[I];
        end;
       Inc(I);
      end;

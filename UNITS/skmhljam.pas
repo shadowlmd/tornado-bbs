@@ -785,7 +785,7 @@ procedure TJamMessageBase.GetFromAddress(var Address: TAddress);
   ClearAddress(Address);
 
   if JamInfo.SourceAddress.Zone <> 0 then
-   Address := JamInfo.SourceAddress
+   Address:=JamInfo.SourceAddress
   else
    inherited GetFromAddress(Address);
  end;
@@ -795,15 +795,20 @@ procedure TJamMessageBase.GetToAddress(var Address: TAddress);
   ClearAddress(Address);
 
   if JamInfo.DestinationAddress.Zone <> 0 then
-   Address := JamInfo.DestinationAddress
+   Address:=JamInfo.DestinationAddress
   else
    inherited GetToAddress(Address);
  end;
 
 procedure TJamMessageBase.GetFromAndToAddress(var FromAddress, ToAddress: TAddress);
  begin
-  GetFromAddress(FromAddress);
-  GetToAddress(ToAddress);
+  if (JamInfo.SourceAddress.Zone = 0) and (JamInfo.DestinationAddress.Zone = 0) then
+   inherited GetFromAndToAddress(FromAddress, ToAddress)
+  else
+   begin
+    GetFromAddress(FromAddress);
+    GetToAddress(ToAddress);
+   end;
  end;
 
 function TJamMessageBase.GetAttribute(Attribute: Longint): Boolean;

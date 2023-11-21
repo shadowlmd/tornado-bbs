@@ -704,7 +704,7 @@ Begin
   If HotKeysStr <> '' Then
     Exit;
 
-  If Not Msg^. OpenMessageHeader Then
+  If Not Msg^. OpenMessage Then
     Exit;
 
   FillChar (H^, SizeOf (H^), #0);
@@ -725,7 +725,7 @@ Begin
   Begin
     H^. IsRcvd := True;
     Msg^. SetAttribute (maReceived, True);
-    Msg^. WriteMessageHeader;
+    Msg^. WriteMessage;
   End;
 
   If Msg^. GetKludge (#1'MSGID', S) Then

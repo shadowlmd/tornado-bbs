@@ -152,7 +152,7 @@ procedure TLongintCollection.FreeItem(Item: Pointer);
 
 procedure TLongintCollection.FreeAll;
  begin
-  Count := 0;
+  Count:=0;
  end;
 
 { TSquishMessageBase }

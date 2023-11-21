@@ -121,7 +121,7 @@ procedure TLongintCollection.FreeItem(Item: Pointer);
 
 procedure TLongintCollection.FreeAll;
  begin
-  Count := 0;
+  Count:=0;
  end;
 
 { TFidoMessageBase }
@@ -694,7 +694,7 @@ function TFidoMessageBase.CreateNewMessage: Boolean;
   if Link <> nil then
    CloseMessage;
 
-  N := GetHighest + 1;
+  N:=GetHighest + 1;
 
   Link:=CreateMessageBaseFileStream(GetBasePath + LongToStr(N) + '.MSG', smCreate);
 

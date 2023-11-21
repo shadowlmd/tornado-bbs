@@ -981,25 +981,30 @@ procedure TMessageBase.CheckFromAddress(const S: String; var Address: TAddress);
  var
   A: TAddress;
   B1, B2: Byte;
+  Valid: Boolean;
  begin
-  if Copy(S, 1, 7) = #1'MSGID:' then StrToAddress(ExtractWord(2, S, [' ']), Address) else
+  Valid:=False;
+
+  if Copy(S, 1, 7) = #1'MSGID:' then
+   Valid:=StrToAddress(ExtractWord(2, S, [' ']), A) else
   if Copy(S, 1, 5) = #1'INTL' then
    begin
+    Valid:=StrToAddress(ExtractWord(3, S, [' ']), A);
     A.Point:=Address.Point;
-
-    StrToAddress(ExtractWord(3, S, [' ']), Address);
-
-    Address.Point:=A.Point;
    end else
-  if Copy(S, 1, 5) = #1'FMPT' then StrToInteger(ExtractWord(2, S, [' ']), Address.Point) else
+  if Copy(S, 1, 5) = #1'FMPT' then
+   StrToInteger(ExtractWord(2, S, [' ']), Address.Point) else
   if Copy(S, 1, 10) = ' * Origin:' then
    begin
     B1:=CharRPos('(', S);
     B2:=CharRPos(')', S);
 
     if (B1 <> 0) and (B2 > B1) then
-     StrToAddress(Copy(S, B1 + 1, B2 - B1 - 1), Address);
+     Valid:=StrToAddress(Copy(S, B1 + 1, B2 - B1 - 1), A);
    end;
+
+  if Valid and (A.Zone <> 0) then
+   Address:=A;
  end;
 
 procedure TMessageBase.CheckToAddress(const S: String; var Address: TAddress);
@@ -1008,13 +1013,14 @@ procedure TMessageBase.CheckToAddress(const S: String; var Address: TAddress);
  begin
   if Copy(S, 1, 5) = #1'INTL' then
    begin
-    A.Point:=Address.Point;
-
-    StrToAddress(ExtractWord(2, S, [' ']), Address);
-
-    Address.Point:=A.Point;
+    if StrToAddress(ExtractWord(2, S, [' ']), A) and (A.Zone <> 0) then
+     begin
+      A.Point:=Address.Point;
+      Address:=A;
+     end;
    end else
-  if Copy(S, 1, 5) = #1'TOPT' then StrToInteger(ExtractWord(2, S, [' ']), Address.Point);
+  if Copy(S, 1, 5) = #1'TOPT' then
+   StrToInteger(ExtractWord(2, S, [' ']), Address.Point);
  end;
 
 function TMessageBase.CreateNewMessage: Boolean;
@@ -1223,7 +1229,7 @@ function skMHLversion: String;
 
 function skMHLtitle: String;
  begin
-  skMHLtitle:= 'skMHL ' + skMHLversion;
+  skMHLtitle:='skMHL ' + skMHLversion;
  end;
 
 function skMHLfulltitle: String;
