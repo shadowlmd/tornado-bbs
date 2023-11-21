@@ -555,21 +555,21 @@ procedure TMessageBase.SetFromAddress(var Address: TAddress; const FreshMSGID: B
   ToAddress: TAddress;
   S: String;
  begin
-  if (not FreshMSGID) and GetKludge('MSGID:', S) then
-   SetKludge('MSGID:', 'MSGID: ' + AddressToStrEx(Address) + ' ' + ExtractWord(3, S, [' ']))
+  if (not FreshMSGID) and GetKludge(#1'MSGID:', S) then
+   SetKludge(#1'MSGID:', #1'MSGID: ' + AddressToStrEx(Address) + ' ' + ExtractWord(3, S, [' ']))
   else
-   SetKludge('MSGID:', 'MSGID: ' + AddressToStrEx(Address) + ' ' + GenerateMSGID);
+   SetKludge(#1'MSGID:', #1'MSGID: ' + AddressToStrEx(Address) + ' ' + GenerateMSGID);
 
   if GetFlag(afNetmail) then
    begin
     GetToAddress(ToAddress);
 
-    SetKludge('INTL', 'INTL ' + AddressToStrPointless(ToAddress) + ' ' + AddressToStrPointless(Address));
+    SetKludge(#1'INTL', #1'INTL ' + AddressToStrPointless(ToAddress) + ' ' + AddressToStrPointless(Address));
 
     if Address.Point = 0 then
-     DeleteKludge('FMPT')
+     DeleteKludge(#1'FMPT')
     else
-     SetKludge('FMPT', 'FMPT ' + LongToStr(Address.Point));
+     SetKludge(#1'FMPT', #1'FMPT ' + LongToStr(Address.Point));
    end;
  end;
 
@@ -581,12 +581,12 @@ procedure TMessageBase.SetToAddress(var Address: TAddress);
    begin
     GetFromAddress(FromAddress);
 
-    SetKludge('INTL', 'INTL ' + AddressToStrPointless(Address) + ' ' + AddressToStrPointless(FromAddress));
+    SetKludge(#1'INTL', #1'INTL ' + AddressToStrPointless(Address) + ' ' + AddressToStrPointless(FromAddress));
 
     if Address.Point = 0 then
-     DeleteKludge('TOPT')
+     DeleteKludge(#1'TOPT')
     else
-     SetKludge('TOPT', 'TOPT ' + LongToStr(Address.Point));
+     SetKludge(#1'TOPT', #1'TOPT ' + LongToStr(Address.Point));
    end;
  end;
 
@@ -981,8 +981,8 @@ procedure TMessageBase.CheckFromAddress(const S: String; var Address: TAddress);
  var
   A: TAddress;
  begin
-  if Copy(S, 1, 7) = 'MSGID:' then StrToAddress(ExtractWord(2, S, [' ']), Address);
-  if Copy(S, 1, 5) = 'INTL'   then
+  if Copy(S, 1, 7) = #1'MSGID:' then StrToAddress(ExtractWord(2, S, [' ']), Address);
+  if Copy(S, 1, 5) = #1'INTL'   then
    begin
     A.Point:=Address.Point;
 
@@ -990,14 +990,14 @@ procedure TMessageBase.CheckFromAddress(const S: String; var Address: TAddress);
 
     Address.Point:=A.Point;
    end else
-  if Copy(S, 1, 5) = 'FMPT'   then StrToInteger(ExtractWord(2, S, [' ']), Address.Point);
+  if Copy(S, 1, 5) = #1'FMPT'   then StrToInteger(ExtractWord(2, S, [' ']), Address.Point);
  end;
 
 procedure TMessageBase.CheckToAddress(const S: String; var Address: TAddress);
  var
   A: TAddress;
  begin
-  if Copy(S, 1, 5) = 'INTL' then
+  if Copy(S, 1, 5) = #1'INTL' then
    begin
     A.Point:=Address.Point;
 
@@ -1005,7 +1005,7 @@ procedure TMessageBase.CheckToAddress(const S: String; var Address: TAddress);
 
     Address.Point:=A.Point;
    end else
-  if Copy(S, 1, 5) = 'TOPT' then StrToInteger(ExtractWord(2, S, [' ']), Address.Point);
+  if Copy(S, 1, 5) = #1'TOPT' then StrToInteger(ExtractWord(2, S, [' ']), Address.Point);
  end;
 
 function TMessageBase.CreateNewMessage: Boolean;

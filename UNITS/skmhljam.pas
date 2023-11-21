@@ -581,11 +581,11 @@ function TJamMessageBase.OpenMessage: Boolean;
   while GetSubField(Count, SubFieldType, S) do
    begin
     case SubFieldType of
-     jamMSGID: PutString('MSGID: ' + S);
-     jamREPLY: PutString('REPLY: ' + S);
-     jamPID: PutString('PID: ' + S);
-     jamUnknown: PutString('' + S);
-     jamFLAGS: PutString('FLAGS: ' + S);
+     jamMSGID: PutString(#1'MSGID: ' + S);
+     jamREPLY: PutString(#1'REPLY: ' + S);
+     jamPID: PutString(#1'PID: ' + S);
+     jamUnknown: PutString(#1 + S);
+     jamFLAGS: PutString(#1'FLAGS: ' + S);
     end;
     Inc(Count);
    end;
@@ -596,7 +596,7 @@ function TJamMessageBase.OpenMessage: Boolean;
   while GetSubField(Count, SubFieldType, S) do
    begin
     if SubFieldType = jamVia then
-     PutString('Via ' + S);
+     PutString(#1'Via ' + S);
 
     Inc(Count);
    end;
@@ -614,7 +614,7 @@ function TJamMessageBase.OpenMessage: Boolean;
   while GetSubField(Count, SubFieldType, S) do
    begin
     if SubFieldType = jamPATH then
-     PutString('PATH: ' + S);
+     PutString(#1'PATH: ' + S);
 
     Inc(Count);
    end;
@@ -713,11 +713,11 @@ function TJamMessageBase.OpenMessageHeader: Boolean;
   while GetSubField(Count, SubFieldType, S) do
    begin
     case SubFieldType of
-     jamMSGID: PutString('MSGID: ' + S);
-     jamREPLY: PutString('REPLY: ' + S);
-     jamPID: PutString('PID: ' + S);
-     jamUnknown: PutString('' + S);
-     jamFLAGS: PutString('FLAGS: ' + S);
+     jamMSGID: PutString(#1'MSGID: ' + S);
+     jamREPLY: PutString(#1'REPLY: ' + S);
+     jamPID: PutString(#1'PID: ' + S);
+     jamUnknown: PutString(#1 + S);
+     jamFLAGS: PutString(#1'FLAGS: ' + S);
     end;
 
     Inc(Count);
@@ -895,27 +895,27 @@ function TJamMessageBase.WriteMessage: Boolean;
     LineLength:=LenASCIIZ(Line) and $FF;
 
     Move(Line^, S[1], LineLength);
-    if Copy(S, 1, 8) = 'MSGID: ' then
+    if Copy(S, 1, 8) = #1'MSGID: ' then
      begin
       AddSubField(jamMSGID, Copy(S, 9, 255));
 
       JamMessageHeader.JamHeader.MSGIDCrc:=StrCrc32(Copy(S, 9, 255));
      end else
-    if Copy(S, 1, 8) = 'REPLY: ' then
+    if Copy(S, 1, 8) = #1'REPLY: ' then
      begin
       AddSubField(jamREPLY, Copy(S, 9, 255));
 
       JamMessageHeader.JamHeader.REPLYCrc:=StrCrc32(Copy(S, 9, 255));
      end else
-    if Copy(S, 1, 6) = 'PID: ' then AddSubField(jamPID, Copy(S, 7, 255)) else
-    if Copy(S, 1, 8) = 'FLAGS: ' then AddSubField(jamFLAGS, Copy(S, 9, 255)) else
-    if Copy(S, 1, 5) = 'Via ' then AddSubField(jamVia, Copy(S, 6, 255)) else
+    if Copy(S, 1, 6) = #1'PID: ' then AddSubField(jamPID, Copy(S, 7, 255)) else
+    if Copy(S, 1, 8) = #1'FLAGS: ' then AddSubField(jamFLAGS, Copy(S, 9, 255)) else
+    if Copy(S, 1, 5) = #1'Via ' then AddSubField(jamVia, Copy(S, 6, 255)) else
     if Copy(S, 1, 9) = 'SEEN-BY: ' then AddSubField(jamSEENBY, Copy(S, 10, 255)) else
-    if Copy(S, 1, 7) = 'PATH: ' then AddSubField(jamPATH, Copy(S, 8, 255)) else
-    if Copy(S, 1, 5) = 'INTL' then else
-    if Copy(S, 1, 5) = 'FMPT' then else
-    if Copy(S, 1, 5) = 'TOPT' then else
-    if Copy(S, 1, 1) = '' then AddSubField(jamUnknown, Copy(S, 2, 255)) else
+    if Copy(S, 1, 7) = #1'PATH: ' then AddSubField(jamPATH, Copy(S, 8, 255)) else
+    if Copy(S, 1, 5) = #1'INTL' then else
+    if Copy(S, 1, 5) = #1'FMPT' then else
+    if Copy(S, 1, 5) = #1'TOPT' then else
+    if S[1] = #1 then AddSubField(jamUnknown, Copy(S, 2, 255)) else
      begin
       Buffer^.Write(Line^, LenASCIIZ(Line));
 
