@@ -848,11 +848,15 @@ function StrToAddress(Source: String; var Address: TAddress): Boolean;
   if Source = '' then
    Exit;
 
+  if Pos('@', Source) <> 0 then
+   begin
+    StrToAddress:=StrToAddress(ExtractWord(1, Source, ['@']), Address) or
+                  StrToAddress(ExtractWord(2, Source, ['@']), Address);
+    Exit;
+   end;
+
   if Source[1] in ['/', ':'] then
    Delete(Source, 1, 1);
-
-  if Pos('@', Source) <> 0 then
-   Source:=Copy(Source, 1, Pos('@', Source) - 1);
 
   if Source = '' then
    Exit;
