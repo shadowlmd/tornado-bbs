@@ -525,7 +525,7 @@ procedure TMessageBase.GetFromAndToAddress(var FromAddress, ToAddress: TAddress)
    begin
     GetString(S);
 
-    if ((Length(S) = 0) or (S[1] <> #1)) and not First then
+    if ((Length(S) = 0) or ((S[1] <> #1) and (S[2] <> '*'))) and not First then
      Continue;
 
     First:=False;
