@@ -481,7 +481,7 @@ procedure TMessageBase.GetFromAddress(var Address: TAddress);
    begin
     GetString(S);
 
-    if ((Length(S) = 0) or (S[1] <> #1)) and not First then
+    if ((Length(S) = 0) or ((S[1] <> #1) and (S[2] <> '*'))) and not First then
      Continue;
 
     First:=False;
@@ -980,9 +980,10 @@ function TMessageBase.GetFlag(const Flag: Longint): Boolean;
 procedure TMessageBase.CheckFromAddress(const S: String; var Address: TAddress);
  var
   A: TAddress;
+  B1, B2: Byte;
  begin
-  if Copy(S, 1, 7) = #1'MSGID:' then StrToAddress(ExtractWord(2, S, [' ']), Address);
-  if Copy(S, 1, 5) = #1'INTL'   then
+  if Copy(S, 1, 7) = #1'MSGID:' then StrToAddress(ExtractWord(2, S, [' ']), Address) else
+  if Copy(S, 1, 5) = #1'INTL' then
    begin
     A.Point:=Address.Point;
 
@@ -990,7 +991,15 @@ procedure TMessageBase.CheckFromAddress(const S: String; var Address: TAddress);
 
     Address.Point:=A.Point;
    end else
-  if Copy(S, 1, 5) = #1'FMPT'   then StrToInteger(ExtractWord(2, S, [' ']), Address.Point);
+  if Copy(S, 1, 5) = #1'FMPT' then StrToInteger(ExtractWord(2, S, [' ']), Address.Point) else
+  if Copy(S, 1, 10) = ' * Origin:' then
+   begin
+    B1:=CharRPos('(', S);
+    B2:=CharRPos(')', S);
+
+    if (B1 <> 0) and (B2 > B1) then
+     StrToAddress(Copy(S, B1 + 1, B2 - B1 - 1), Address);
+   end;
  end;
 
 procedure TMessageBase.CheckToAddress(const S: String; var Address: TAddress);

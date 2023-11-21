@@ -371,6 +371,7 @@ function StrToInteger(const S: String; var I: System.Integer): Boolean;
 procedure StrToWord(const S: String; var I: Word);
 function StrToNumber(const S: String): Boolean;
 function ExtractWord(N: Byte; const S: String; WordDelims: TCharSet): String;
+function CharRPos(C: Char; const S: String): Byte;
 
 procedure ToASCIIZ(const Source: String; const Destination: Pointer);
 function FromASCIIZ(const Source: Pointer): String;
@@ -749,6 +750,19 @@ function ExtractWord(N: Byte; const S: String; WordDelims: TCharSet): String;
       Inc(I);
      end;
    end;
+ end;
+
+function CharRPos(C: Char; const S: String): Byte;
+ var
+  I: Byte;
+ begin
+  for I:=Length(S) downto 1 do
+   if S[I] = C then
+    begin
+     CharRPos:=I;
+     Exit;
+    end;
+  CharRPos:=0;
  end;
 
 procedure ToASCIIZ(const Source: String; const Destination: Pointer);
