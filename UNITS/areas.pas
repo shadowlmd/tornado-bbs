@@ -719,15 +719,6 @@ Begin
   H^. MsgNum := Msg^. Current;
   H^. NumOfMsgs := Msg^. GetCount;
 
-  S := UpString (H^. MsgTo);
-  If ((S = UpString (R. Name)) Or (S = UpString (R. Alias)))
-    And Not H^. IsRcvd Then
-  Begin
-    H^. IsRcvd := True;
-    Msg^. SetAttribute (maReceived, True);
-    Msg^. WriteMessage;
-  End;
-
   If Msg^. GetKludge (#1'MSGID', S) Then
     H^. MSGID := Copy (S, 9, 255);
 
@@ -737,6 +728,15 @@ Begin
       H^. eMail := Trim (ExtractWord (2, S, ['<', '>']))
     Else
       H^. eMail := Trim (S);
+
+  S := UpString (H^. MsgTo);
+  If ((S = UpString (R. Name)) Or (S = UpString (R. Alias)))
+    And Not H^. IsRcvd Then
+  Begin
+    H^. IsRcvd := True;
+    Msg^. SetAttribute (maReceived, True);
+    Msg^. WriteMessage;
+  End;
 
   Msg^. CloseMessage;
 
