@@ -713,7 +713,7 @@ Begin
   MBDateTime2DosDateTime (H^. MsgDateMBDT, H^. MsgDate);
   H^. MsgFrom := Trim (Msg^. GetFrom);
   H^. MsgTo := Trim (Msg^. GetTo);
-  H^. MsgSubj := Msg^. GetSubject;
+  H^. MsgSubj := Trim (PlaceSubStr (PlaceSubStr (Msg^. GetSubject, #10, ' '), #13, ''));
   H^. IsPriv := Msg^. GetAttribute (maPrivate);
   H^. IsRcvd := Msg^. GetAttribute (maReceived);
   H^. MsgNum := Msg^. Current;
@@ -1174,7 +1174,6 @@ Begin
   New (ShowNumsColl, Init (0, 8));
   CurrNum := 0;
   CountNums := 0;
-  S := '';
   EnterStr := lang (laEnterMsgNums);
   FromColors [False] := Cnf. ColorScheme [mlFrom];
   FromColors [True] := Cnf. ColorScheme [mlLightFrom];
@@ -1211,7 +1210,10 @@ Begin
     If Msg^. GetAttribute (maPrivate) And DontShowMsg (mFrom, mTo) Then
       ComWriteLn ('* Private *', 0)
     Else
-      ComWriteLn (Copy (Msg^. GetSubject, 1, ml_SubjLen), eoDisable01);
+    Begin
+      S := Trim (PlaceSubStr (PlaceSubStr (Msg^. GetSubject, #10, ' '), #13, ''));
+      ComWriteLn (Copy (S, 1, ml_SubjLen), eoDisable01);
+    End;
 
     Msg^. CloseMessage;
 
@@ -1526,7 +1528,7 @@ Begin
       mFrom := Trim (Msg^. GetFrom);
       mTo := Trim (Msg^. GetTo);
       H^. IsPriv := Msg^. GetAttribute (maPrivate);
-      H^. MsgSubj := Msg^. GetSubject;
+      H^. MsgSubj := Trim (PlaceSubStr (PlaceSubStr (Msg^. GetSubject, #10, ' '), #13, ''));
       Msg^. CloseMessage;
 
       If Not (H^. IsPriv And DontShowMsg (mFrom, mTo)) Then
