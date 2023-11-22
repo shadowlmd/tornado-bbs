@@ -110,6 +110,9 @@ type
   procedure GetFromAddress(var Address: TAddress); virtual;
   procedure GetToAddress(var Address: TAddress); virtual;
   procedure GetFromAndToAddress(var FromAddress, ToAddress: TAddress); virtual;
+  procedure SetFromAddress(var Address: TAddress; const FreshMSGID: Boolean); virtual;
+  procedure SetToAddress(var Address: TAddress); virtual;
+  procedure SetFromAndToAddress(var FromAddress, ToAddress: TAddress; const FreshMSGID: Boolean); virtual;
   function GetAttribute(Attribute: Longint): Boolean; virtual;
   procedure SetAttribute(Attribute: Longint; Enable: Boolean); virtual;
   procedure GetWrittenDateTime(var DateTime: TMessageBaseDateTime); virtual;
@@ -803,12 +806,34 @@ procedure TJamMessageBase.GetToAddress(var Address: TAddress);
 procedure TJamMessageBase.GetFromAndToAddress(var FromAddress, ToAddress: TAddress);
  begin
   if (JamInfo.SourceAddress.Zone = 0) and (JamInfo.DestinationAddress.Zone = 0) then
-   inherited GetFromAndToAddress(FromAddress, ToAddress)
-  else
+   begin
+    ClearAddress(FromAddress);
+    ClearAddress(ToAddress);
+
+    inherited GetFromAndToAddress(FromAddress, ToAddress)
+   end else
    begin
     GetFromAddress(FromAddress);
     GetToAddress(ToAddress);
    end;
+ end;
+
+procedure TJamMessageBase.SetFromAddress(var Address: TAddress; const FreshMSGID: Boolean);
+ begin
+  inherited SetFromAddress(Address, FreshMSGID);
+
+  JamInfo.SourceAddress:=Address;
+ end;
+
+procedure TJamMessageBase.SetToAddress(var Address: TAddress);
+ begin
+  JamInfo.DestinationAddress:=Address;
+ end;
+
+procedure TJamMessageBase.SetFromAndToAddress(var FromAddress, ToAddress: TAddress; const FreshMSGID: Boolean);
+ begin
+  SetFromAddress(FromAddress, FreshMSGID);
+  SetToAddress(ToAddress);
  end;
 
 function TJamMessageBase.GetAttribute(Attribute: Longint): Boolean;
@@ -870,8 +895,6 @@ function TJamMessageBase.WriteMessage: Boolean;
   JamMessageHeader.JamHeader.SubFieldLen:=0;
   GetMem(Line, MaxLineSize);
   Buffer:=CreateMessageBaseMemoryStream(MaxMessageSize);
-
-  GetFromAndToAddress(JamInfo.SourceAddress, JamInfo.DestinationAddress);
 
   AddSubField(jamFrom, JamInfo.SourceName);
   AddSubField(jamSource, AddressToStr(JamInfo.SourceAddress));
