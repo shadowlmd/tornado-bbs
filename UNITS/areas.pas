@@ -713,7 +713,7 @@ Begin
   MBDateTime2DosDateTime (H^. MsgDateMBDT, H^. MsgDate);
   H^. MsgFrom := Trim (Msg^. GetFrom);
   H^. MsgTo := Trim (Msg^. GetTo);
-  H^. MsgSubj := Msg^. GetSubject;
+  H^. MsgSubj := Trim (Msg^. GetSubject);
   H^. IsPriv := Msg^. GetAttribute (maPrivate);
   H^. IsRcvd := Msg^. GetAttribute (maReceived);
   H^. MsgNum := Msg^. Current;
@@ -1211,7 +1211,7 @@ Begin
     If Msg^. GetAttribute (maPrivate) And DontShowMsg (mFrom, mTo) Then
       ComWriteLn ('* Private *', 0)
     Else
-      ComWriteLn (Copy (Msg^. GetSubject, 1, ml_SubjLen), eoDisable01);
+      ComWriteLn (Copy (Trim (Msg^. GetSubject), 1, ml_SubjLen), eoDisable01);
 
     Msg^. CloseMessage;
 
@@ -1526,7 +1526,7 @@ Begin
       mFrom := Trim (Msg^. GetFrom);
       mTo := Trim (Msg^. GetTo);
       H^. IsPriv := Msg^. GetAttribute (maPrivate);
-      H^. MsgSubj := Msg^. GetSubject;
+      H^. MsgSubj := Trim (Msg^. GetSubject);
       Msg^. CloseMessage;
 
       If Not (H^. IsPriv And DontShowMsg (mFrom, mTo)) Then
