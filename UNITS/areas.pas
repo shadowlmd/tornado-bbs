@@ -1932,7 +1932,8 @@ Begin
     (eMail <> '') And
     (AddressToStrEx (DestAddr) = MsgArea. GateWay) Then
   Begin
-    Msg^. PutString ('To: "' + ToName + '" <' + eMail + '>');
+    S := PlaceSubStr (ToName, '"', '''');
+    Msg^. PutString ('To: "' + S + '" <' + eMail + '>');
     Msg^. PutString ('');
   End;
 
