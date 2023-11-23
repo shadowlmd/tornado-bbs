@@ -1142,25 +1142,31 @@ begin
   Result := 0;
 end;
 
+{ from rtl_changes.txt }
 Const
   mutCursor: PRTLCriticalSection = Nil; // Mutex for exclusive pos changes
 
-procedure DoSetCursorPosition;
-var
-  CurPos: TCoord;
-begin
+{ from rtl_changes.txt }
+Procedure DoSetCursorPosition;
+Var
+  CurPos : TCoord;
+
+Begin
   CurPos.x := CurXPos;
   CurPos.y := CurYPos;
-  SetConsoleCursorPosition(SysConOut, CurPos);
-end;
+  SetConsoleCursorPosition (SysConOut, CurPos);
+End;
 
+{ from rtl_changes.txt }
 Function CursorThreadFunc (P: Pointer): Longint;
 Var
   LastX, LastY : Longint;
   CurPos       : TCoord;
+
 Begin
   LastX := -1;
   LastY := -1;
+
   Repeat
     If WaitForSingleObject (semCursor, SemInfinite) = WAIT_OBJECT_0 Then
     Begin
@@ -1178,9 +1184,11 @@ Begin
       End;
     End;
   Until tidCursor = -2;
+
   tidCursor := -1;
 End;
 
+{ from rtl_changes.txt }
 Procedure CursorThreadExitProc;
 Begin
   // Force cursor thread to terminate
@@ -1311,6 +1319,7 @@ begin
   FlushConsoleInputBuffer(SysConIn);
 end;
 
+{ from rtl_changes.txt }
 Procedure InitialiseCursorThread;
 Var
   sbi: TConsoleScreenBufferInfo;
@@ -1503,9 +1512,10 @@ begin
     end;
 end;
 
+{ from rtl_changes.txt }
 procedure SysTVKbdInit;
 begin
-  SetConsoleMode(SysConIn, ENABLE_MOUSE_INPUT);
+  SetConsoleMode(SysConIn, 0); {ENABLE_MOUSE_INPUT}
 end;
 
 function SysTVGetKeyEvent(var Event: TSysKeyEvent): Boolean;
@@ -1542,6 +1552,7 @@ begin
   Result := pSysShiftState^;
 end;
 
+{ from rtl_changes.txt }
 Procedure SysTVSetCurPos (X, Y: Integer);
 Begin
 {$IFDEF RouteConsoleToStdInOut}
