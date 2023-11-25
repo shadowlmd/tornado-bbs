@@ -244,7 +244,7 @@ Type
    MsgDate           : DateTime;
    MsgFrom, MsgTo,
    MsgSubj, MSGID,
-   eMail             : String [80];
+   eMail             : String {$IFDEF RealMode} [80] {$ENDIF};
  End;
 
  tMsgGroup = Record
