@@ -729,13 +729,17 @@ Begin
     Else
       H^. eMail := Trim (S);
 
-  S := UpString (H^. MsgTo);
-  If ((S = UpString (R. Name)) Or (S = UpString (R. Alias)))
-    And Not H^. IsRcvd Then
+  If Not H^. IsRcvd Then
   Begin
-    H^. IsRcvd := True;
-    Msg^. SetAttribute (maReceived, True);
-    Msg^. WriteMessage;
+    S := UpString (H^. MsgTo);
+    if ((S = UpString (R. Name)) Or (S = UpString (R. Alias))) And
+       ((MsgArea. AreaType <> btNetmail) Or
+        (AddressCompare(H^. ToAddr, MsgArea. Address) = 0)) Then
+    Begin
+      H^. IsRcvd := True;
+      Msg^. SetAttribute (maReceived, True);
+      Msg^. WriteMessage;
+    End;
   End;
 
   Msg^. CloseMessage;
@@ -1296,11 +1300,8 @@ Var
 
   Begin
     Msg^. OpenMessageHeader;
-    H^. IsRcvd := Msg^. GetAttribute (maReceived);
     H^. MsgFrom := Msg^. GetFrom;
     Msg^. CloseMessage;
-    If H^. IsRcvd Then
-      Exit;
 
     Found := True;
 
@@ -1410,11 +1411,19 @@ Begin
       While Msg^. SeekFound Do
       Begin
         Msg^. OpenMessageHeader;
+        Msg^. GetToAddress (H^. ToAddr);
         H^. MsgTo := UpString (Trim (Msg^. GetTo));
+        H^. IsRcvd := Msg^. GetAttribute (maReceived);
         Msg^. CloseMessage;
-        If ((UpName <> Nil) And (H^. MsgTo = UpName^)) Or
-          ((UpAlias <> Nil) And (H^. MsgTo = UpAlias^)) Then
+
+        If Not H^. IsRcvd And
+          (((UpName <> Nil) And (H^. MsgTo = UpName^)) Or
+           ((UpAlias <> Nil) And (H^. MsgTo = UpAlias^))) And
+          ((MsgArea. AreaType <> btNetmail) Or
+           (AddressCompare(H^. ToAddr, MsgArea. Address) = 0))
+        Then
           PrivNumsColl^. Insert (Pointer (Msg^. Current));
+
         Msg^. SeekNext;
       End;
 
