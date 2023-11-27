@@ -695,8 +695,7 @@ Begin
                    (AddressCompare(mToAddr, MsgArea. Address) <> 0)
   Else
   If UserName = LoString (mFrom) Then
-    DontShowMsg := (MsgArea. AreaType = btNetmail) And
-                   (AddressCompare(mFromAddr, MsgArea. Address) <> 0)
+    DontShowMsg := AddressCompare(mFromAddr, MsgArea. Address) <> 0
   Else
     DontShowMsg := True;
 End;
@@ -994,9 +993,10 @@ Begin
            1 : Continue;                               {Again}
 
            2 : Begin                                   {Delete}
-                 If (H^. MsgFrom <> R. Name) And
+                 If ((H^. MsgFrom <> R. Name) Or
+                     (AddressCompare(H^. FromAddr, MsgArea. Address) <> 0)) And
                     (MsgArea. SysOpSec > R. Security) Or
-                     Not FlagsValid (R. Flags, MsgArea. SysOpFlags) Then
+                    Not FlagsValid (R. Flags, MsgArea. SysOpFlags) Then
                  Begin
                    If R. HotKeys Then
                      ComWriteLn ('', 0);
