@@ -76,7 +76,7 @@ Procedure PrePostMsg (Const Param, Tpl: String);
 Procedure Msg2SysOp (Const Subj, Tpl: String);
 
 Procedure PostFile (PostMode: tPostMode; Const FileName: PathStr; AbsoluteNum: Word;
-          Const FromName, ToName, mSubj, cReply, eMail: String; Const OrigAddr, DestAddr: TAddress;
+          Const FromName, ToName, mSubj, cReply, eMail: String; OrigAddr, DestAddr: TAddress;
           Options: Byte);
 Procedure TypeFile (Const FileName: PathStr);
 
@@ -677,7 +677,7 @@ Begin
   End;
 End;
 
-Function DontShowMsg (Const mFrom, mTo: String; Const mFromAdd, mToAddr: TAddress): Boolean;
+Function DontShowMsg (Const mFrom, mTo: String; Const mFromAddr, mToAddr: TAddress): Boolean;
 Var
   UserName, ToName : String;
 
