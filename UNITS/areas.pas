@@ -685,8 +685,8 @@ Begin
   UserName := LoString (R. Name);
   ToName := LoString (mTo);
 
-  If (R. Security >= MsgArea. SysOpSec) Or
-     FlagsValid (R. Flags, MsgArea. SysOpFlags)
+  If (R. Security >= MsgArea. SysOpSec) And
+    FlagsValid (R. Flags, MsgArea. SysOpFlags)
   Then
     DontShowMsg := False
   Else
