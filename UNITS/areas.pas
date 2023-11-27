@@ -76,7 +76,7 @@ Procedure PrePostMsg (Const Param, Tpl: String);
 Procedure Msg2SysOp (Const Subj, Tpl: String);
 
 Procedure PostFile (PostMode: tPostMode; Const FileName: PathStr; AbsoluteNum: Word;
-          Const FromName, ToName, mSubj, cReply, eMail: String; OrigAddr, DestAddr: TAddress;
+          Const FromName, ToName, mSubj, cReply, eMail: String; Const OrigAddr, DestAddr: TAddress;
           Options: Byte);
 Procedure TypeFile (Const FileName: PathStr);
 
@@ -677,7 +677,7 @@ Begin
   End;
 End;
 
-Function DontShowMsg (Const mFrom, mTo: String): Boolean;
+Function DontShowMsg (Const mFrom, mTo: String; Const mFromAdd, mToAddr: TAddress): Boolean;
 Var
   UserName, ToName : String;
 
@@ -685,10 +685,20 @@ Begin
   UserName := LoString (R. Name);
   ToName := LoString (mTo);
 
-  DontShowMsg := (UserName <> ToName) And (LoString (R. Alias) <> ToName) And
-    (UserName <> LoString (mFrom)) And
-    ((MsgArea. SysOpSec > R. Security) Or
-     Not FlagsValid (R. Flags, MsgArea. SysOpFlags));
+  If (R. Security >= MsgArea. SysOpSec) Or
+     FlagsValid (R. Flags, MsgArea. SysOpFlags)
+  Then
+    DontShowMsg := False
+  Else
+  If (UserName = ToName) Or (LoString (R. Alias) = ToName) Then
+    DontShowMsg := (MsgArea. AreaType = btNetmail) And
+                   (AddressCompare(mToAddr, MsgArea. Address) <> 0)
+  Else
+  If UserName = LoString (mFrom) Then
+    DontShowMsg := (MsgArea. AreaType = btNetmail) And
+                   (AddressCompare(mFromAddr, MsgArea. Address) <> 0)
+  Else
+    DontShowMsg := True;
 End;
 
 Procedure ShowCurrentMsg (Pause: Boolean);
@@ -788,7 +798,7 @@ Begin
     Exit;
   End;
 
-  Secured := H^. IsPriv And DontShowMsg (H^. MsgFrom, H^. MsgTo);
+  Secured := H^. IsPriv And DontShowMsg (H^. MsgFrom, H^. MsgTo, H^. FromAddr, H^. ToAddr);
 
   ComWrite (lang (laMsgSubj), eoMacro + eoCodes + eoNoFlush);
   If Secured Then
@@ -1026,7 +1036,7 @@ Begin
                End;
 
            6 : If Not (H^. IsPriv And DontShowMsg (H^. MsgFrom,      {Reply}
-                  H^. MsgTo)) Then
+                  H^. MsgTo, H^. FromAddr, H^.ToAddr)) Then
                Begin
                  ReplyToCurrMsg ('menu');
                  Continue;
@@ -1106,6 +1116,7 @@ Var
   ShowNumsColl          : PLongIntCollection;
   i, CurrNum, CountNums : Integer;
   mFrom, mTo            : String [UserNameLen];
+  mFromAddr, mToAddr    : TAddress;
   S, EnterStr           : String;
   MoreRes               : Boolean;
   FromColors, ToColors  : Array [Boolean] Of Byte;
@@ -1200,6 +1211,7 @@ Begin
     Numbers^ [CurrNum] := Msg^. Current;
 
     Msg^. OpenMessageHeader;
+    Msg^. GetFromAndToAddress(mFromAddr, mToAddr);
     mFrom := Trim (Msg^. GetFrom);
     mTo := Trim (Msg^. GetTo);
 
@@ -1211,7 +1223,9 @@ Begin
       ' ', eoNoFlush + eoDisable01);
     ComWrite (EmuRelColor (Cnf. ColorScheme [mlSubj]), eoNoFlush);
 
-    If Msg^. GetAttribute (maPrivate) And DontShowMsg (mFrom, mTo) Then
+    If Msg^. GetAttribute (maPrivate) And
+      DontShowMsg (mFrom, mTo, mFromAddr, mToAddr)
+    Then
       ComWriteLn ('* Private *', 0)
     Else
     Begin
@@ -1253,7 +1267,8 @@ ShowMsgs:
       Begin
         ShowCurrentMsg (True);
 
-        If (H^. IsPriv And DontShowMsg (H^. MsgFrom, H^. MsgTo)) Or
+        If (H^. IsPriv And
+            DontShowMsg (H^. MsgFrom, H^. MsgTo, H^. FromAddr, H^. ToAddr)) Or
            (MsgArea. WriteSec > R. Security) Or
            Not FlagsValid (R. Flags, MsgArea. WriteFlags) Then
         Begin
@@ -1489,6 +1504,8 @@ Var
   i             : Integer;
   Found, Match  : Boolean;
   mFrom, mTo    : String [80];
+  mFromAddr,
+  mToAddr       : TAddress;
   S             : String;
 
 Label
@@ -1534,13 +1551,14 @@ Begin
     For i := 1 To 16 Do
     Begin
       Msg^. OpenMessageHeader;
+      Msg^. GetFromAndToAddress(mFromAddr, mToAddr);
       mFrom := Trim (Msg^. GetFrom);
       mTo := Trim (Msg^. GetTo);
       H^. IsPriv := Msg^. GetAttribute (maPrivate);
       H^. MsgSubj := Trim (PlaceSubStr (PlaceSubStr (Msg^. GetSubject, #10, ' '), #13, ''));
       Msg^. CloseMessage;
 
-      If Not (H^. IsPriv And DontShowMsg (mFrom, mTo)) Then
+      If Not (H^. IsPriv And DontShowMsg (mFrom, mTo, mFromAddr, mToAddr)) Then
       Begin
         Match := TestMasks (Masks, MatchedMasks, H^. MsgSubj) Or TestMasks (Masks,
           MatchedMasks, mFrom) Or TestMasks (Masks, MatchedMasks, mTo);
