@@ -1515,7 +1515,7 @@ end;
 { from rtl_changes.txt }
 procedure SysTVKbdInit;
 begin
-  SetConsoleMode(SysConIn, 0); {ENABLE_MOUSE_INPUT}
+  SetConsoleMode(SysConIn, {$IFDEF MOUSE} ENABLE_MOUSE_INPUT {$ELSE} 0 {$ENDIF});
 end;
 
 function SysTVGetKeyEvent(var Event: TSysKeyEvent): Boolean;

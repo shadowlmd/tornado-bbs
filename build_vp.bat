@@ -77,7 +77,7 @@ goto end
 :u
 :uw
 rem useredit
-%VPC% -Vvp.vpo -B -CW -EBIN useredit.pas
+%VPC% -Vvp.vpo -B -CW -DMOUSE -EBIN useredit.pas
 if errorlevel 1 goto error
 goto end
 
