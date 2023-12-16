@@ -32,7 +32,7 @@ Type
   MacName     = String [63];
 
   MAC = Record                    { Typecasting record for MAC }
-    ResName : MacName;              { platform                   }
+    ResName : MacName;            { platform                   }
     ResCompSize, ResRealSize : LongInt;
     ResourceType : Byte;
     DataCompSize, DataRealSize : LongInt;
