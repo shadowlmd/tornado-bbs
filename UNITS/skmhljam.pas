@@ -32,6 +32,7 @@ const
  jamSEENBY              = $07D1;
  jamPATH                = $07D2;
  jamFLAGS               = $07D3;
+ jamTZUTC               = $07D4;
 
  jamaPrivate            = $00000004;
  jamaCrash              = $00000100;
@@ -587,8 +588,11 @@ function TJamMessageBase.OpenMessage: Boolean;
      jamMSGID: PutString(#1'MSGID: ' + S);
      jamREPLY: PutString(#1'REPLY: ' + S);
      jamPID: PutString(#1'PID: ' + S);
-     jamUnknown: PutString(#1 + S);
      jamFLAGS: PutString(#1'FLAGS: ' + S);
+     jamTZUTC: PutString(#1'TZUTC: ' + S);
+     jamUnknown:
+      if (Copy(S, 1, 4) <> 'Via ') and (Copy(S, 1, 4) <> 'Recd') and (Copy(S, 1, 9) <> 'Forwarded') then
+       PutString(#1 + S);
     end;
     Inc(Count);
    end;
@@ -599,7 +603,11 @@ function TJamMessageBase.OpenMessage: Boolean;
   while GetSubField(Count, SubFieldType, S) do
    begin
     if SubFieldType = jamVia then
-     PutString(#1'Via ' + S);
+     PutString(#1'Via ' + S)
+    else
+    if (SubFieldType = jamUnknown) and ((Copy(S, 1, 4) = 'Via ') or (Copy(S, 1, 4) = 'Recd') or
+       (Copy(S, 1, 9) = 'Forwarded')) then
+     PutString(#1 + S);
 
     Inc(Count);
    end;
@@ -721,6 +729,7 @@ function TJamMessageBase.OpenMessageHeader: Boolean;
      jamPID: PutString(#1'PID: ' + S);
      jamUnknown: PutString(#1 + S);
      jamFLAGS: PutString(#1'FLAGS: ' + S);
+     jamTZUTC: PutString(#1'TZUTC: ' + S);
     end;
 
     Inc(Count);
@@ -745,7 +754,7 @@ function TJamMessageBase.CloseMessage: Boolean;
 
 function TJamMessageBase.GetHighest: Longint;
  begin
-  GetHighest:=JamBaseHeader.BaseMsgNum + JamBaseHeader.ActiveMsgs;
+  GetHighest:=JamBaseHeader.BaseMsgNum + JamBaseHeader.ActiveMsgs - 1;
  end;
 
 function TJamMessageBase.GetCount: Longint;
@@ -937,6 +946,7 @@ function TJamMessageBase.WriteMessage: Boolean;
      end else
     if Copy(S, 1, 6) = #1'PID: ' then AddSubField(jamPID, Copy(S, 7, 255)) else
     if Copy(S, 1, 8) = #1'FLAGS: ' then AddSubField(jamFLAGS, Copy(S, 9, 255)) else
+    if Copy(S, 1, 8) = #1'TZUTC: ' then AddSubField(jamTZUTC, Copy(S, 9, 255)) else
     if Copy(S, 1, 5) = #1'Via ' then AddSubField(jamVia, Copy(S, 6, 255)) else
     if Copy(S, 1, 9) = 'SEEN-BY: ' then AddSubField(jamSEENBY, Copy(S, 10, 255)) else
     if Copy(S, 1, 7) = #1'PATH: ' then AddSubField(jamPATH, Copy(S, 8, 255)) else
@@ -1012,7 +1022,7 @@ function TJamMessageBase.CreateNewMessage: Boolean;
 
   Inc(JamBaseHeader.ActiveMsgs);
 
-  SetCurrent(JamBaseHeader.BaseMsgNum + GetCount - 1);
+  SetCurrent(JamBaseHeader.BaseMsgNum + GetCount);
 
   FillChar(JamMessageHeader, SizeOf(JamMessageHeader), 0);
   FillChar(JamInfo, SizeOf(JamInfo), 0);

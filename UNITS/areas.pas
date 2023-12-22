@@ -1107,7 +1107,7 @@ Begin
         ComWriteLn (lang (laNoMoreMessages), eoMacro + eoCodes);
         If PauseAfterEach Then
         Begin
-          Msg^. Seek (Msg^. GetCount);
+          Msg^. Seek (Msg^. GetHighest);
           Goto ReSelect;
         End;
 

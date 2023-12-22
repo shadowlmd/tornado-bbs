@@ -384,7 +384,7 @@ procedure TMessageBase.SeekNext;
   repeat
    Inc(CurrentMessage);
 
-   if CurrentMessage > GetCount then
+   if CurrentMessage > GetHighest then
     begin
      CurrentMessage:=0;
 
