@@ -1106,6 +1106,9 @@ Begin
       End;
     End;
 
+    If Not PauseAfterEach Then
+      Msg^. SetLastRead (LR, H^. MsgNum);
+
     Dispose (H);
     FreeMem (LineBuf, MaxLineSize);
     MsgText^. SetLimit (0);
