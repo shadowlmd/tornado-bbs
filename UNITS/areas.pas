@@ -975,7 +975,8 @@ Begin
           Break;
       End Else
       Begin
-        Msg^. SetLastRead (LR, H^. MsgNum);
+        If R. LastRead >= 0 Then
+          Msg^. SetLastRead (LR, H^. MsgNum);
 
       ReSelect:
         i := MenuBar (lang (laMsgString), Copy (lang (laMsgKeys), 1, 3) +
@@ -1115,7 +1116,7 @@ Begin
       End;
     End;
 
-    If Not PauseAfterEach Then
+    If Not PauseAfterEach And (R. LastRead >= 0) Then
       Msg^. SetLastRead (LR, H^. MsgNum);
 
     Dispose (H);
