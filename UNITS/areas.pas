@@ -895,9 +895,6 @@ Begin
   End;
 
   MsgText^. FreeAll;
-
-  If R. LastRead >= 0 Then
-    Msg^. SetLastRead (LR, Msg^. Current);
 End;
 
 Function CheckAndOpenMsgArea: Boolean;
@@ -978,6 +975,7 @@ Begin
           Break;
       End Else
       Begin
+        Msg^. SetLastRead (LR, H^. MsgNum);
 
       ReSelect:
         i := MenuBar (lang (laMsgString), Copy (lang (laMsgKeys), 1, 3) +
@@ -1012,7 +1010,15 @@ Begin
                    LogWrite ('+', sm (smlDeletingMsg) +
                      Long2Str (H^. MsgNum) + sm (smDelFromArea) +
                      ZeroMsg (MsgArea. Name, True));
+
                    Msg^. KillMessage;
+                   Msg^. SeekNext;
+
+                   If Not Msg^. SeekFound Then
+                     Msg^. Seek (Msg^. GetCount);
+
+                   If Msg^. SeekFound Then
+                     Continue;
                  End
                  Else
                    Continue;
@@ -1039,7 +1045,9 @@ Begin
                   H^. MsgTo, H^. FromAddr, H^.ToAddr)) Then
                Begin
                  ReplyToCurrMsg ('menu');
-                 Continue;
+                 Msg^. Seek (H^. MsgNum);
+                 If Msg^. SeekFound Then
+                   Continue;
                End Else
                Begin
                  ComWriteLn ('', 0);
