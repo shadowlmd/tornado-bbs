@@ -1045,6 +1045,8 @@ Begin
                   H^. MsgTo, H^. FromAddr, H^.ToAddr)) Then
                Begin
                  ReplyToCurrMsg ('menu');
+                 Cls;
+                 Message (lang (laMsgSaved));
                  Msg^. Seek (H^. MsgNum);
                  If Msg^. SeekFound Then
                    Continue;
@@ -1056,9 +1058,16 @@ Begin
 
            7 : Begin                                                 {Post}
                  If PostMsg (pmNew, '', {'',} '', 'menu') Then
+                 Begin
                    LogWrite ('+', sm (smlPosting) + ZeroMsg (MsgArea. Name,
                      True));
-                 Continue;
+                   Cls;
+                   Message (lang (laMsgSaved));
+                   Msg^. Seek (H^. MsgNum);
+                   If Msg^. SeekFound Then
+                     Continue;
+                 End Else
+                   Continue;
                End;
 
            8 : Begin                                             {To begin}
