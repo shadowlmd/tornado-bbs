@@ -95,6 +95,7 @@ type
   function Exist(const Path: String): Boolean; virtual;
   procedure Close; virtual;
   function Exists(Message: Longint): Boolean; virtual;
+  function Current: Longint; virtual;
   function GetLocation: Longint; virtual;
   procedure SetLocation(Location: Longint); virtual;
   function OpenMessage: Boolean; virtual;
@@ -134,6 +135,7 @@ type
   procedure SetReplyNext(const AReplyNext: LongInt);
   procedure GetMessageHeader(var AHeader: TJamMessageHeaderFirst);
   procedure GetStreams(var AHeaderLink, AIndexLink, ADataLink: PMessageBaseStream);
+  procedure SetCurrent(const ACurrentMessage: Longint); virtual;
   function GetRead: Boolean; virtual;
   procedure SetRead(const Value: Boolean); virtual;
  private
@@ -173,7 +175,7 @@ constructor TJamMessageBase.Init;
   DataLink:=nil;
   LastReadLink:=nil;
 
-  SetCurrent(0);
+  SetLocation(0);
  end;
 
 destructor TJamMessageBase.Done;
@@ -483,14 +485,19 @@ function TJamMessageBase.Exists(Message: Longint): Boolean;
    end;
  end;
 
+function TJamMessageBase.Current: Longint;
+ begin
+  Current:=GetLocation - JamBaseHeader.BaseMsgNum + 1;
+ end;
+
 function TJamMessageBase.GetLocation: Longint;
  begin
-  GetLocation:=Current;
+  GetLocation:=inherited Current;
  end;
 
 procedure TJamMessageBase.SetLocation(Location: Longint);
  begin
-  SetCurrent(Location);
+  inherited SetCurrent(Location);
  end;
 
 function TJamMessageBase.OpenMessage: Boolean;
@@ -504,7 +511,7 @@ function TJamMessageBase.OpenMessage: Boolean;
 
   OpenMessage:=False;
 
-  JamIndexPosition:=(Current - JamBaseHeader.BaseMsgNum) * SizeOf(JamIndex);
+  JamIndexPosition:=(GetLocation - JamBaseHeader.BaseMsgNum) * SizeOf(JamIndex);
 
   IndexLink^.Seek(JamIndexPosition);
 
@@ -646,7 +653,7 @@ function TJamMessageBase.OpenMessageHeader: Boolean;
 
   OpenMessageHeader:=False;
 
-  JamIndexPosition:=(Current - JamBaseHeader.BaseMsgNum) * SizeOf(JamIndex);
+  JamIndexPosition:=(GetLocation - JamBaseHeader.BaseMsgNum) * SizeOf(JamIndex);
 
   IndexLink^.Seek(JamIndexPosition);
 
@@ -1022,7 +1029,7 @@ function TJamMessageBase.CreateNewMessage: Boolean;
 
   Inc(JamBaseHeader.ActiveMsgs);
 
-  SetCurrent(JamBaseHeader.BaseMsgNum + GetCount);
+  SetLocation(JamBaseHeader.BaseMsgNum + GetCount);
 
   FillChar(JamMessageHeader, SizeOf(JamMessageHeader), 0);
   FillChar(JamInfo, SizeOf(JamInfo), 0);
@@ -1042,7 +1049,7 @@ function TJamMessageBase.CreateNewMessage: Boolean;
   JamMessageHeader.JamHeader.REPLYCrc:=$FFFFFFFF;
   JamMessageHeader.JamHeader.PwdCrc:=$FFFFFFFF;
 
-  JamMessageHeader.JamHeader.MsgNum:=Current;
+  JamMessageHeader.JamHeader.MsgNum:=GetLocation;
 
   GetCurrentMessageBaseDateTime(DateTime);
   SetWrittenDateTime(DateTime);
@@ -1061,7 +1068,7 @@ function TJamMessageBase.KillMessage: Boolean;
   JamIndex.MsgToCrc:=-1;
   JamIndex.HdrLoc:=-1;
 
-  JamIndexPosition:=(Current - JamBaseHeader.BaseMsgNum) * SizeOf(JamIndex);
+  JamIndexPosition:=(GetLocation - JamBaseHeader.BaseMsgNum) * SizeOf(JamIndex);
 
   IndexLink^.Seek(JamIndexPosition);
   IndexLink^.Write(JamIndex, SizeOf(JamIndex));
@@ -1070,7 +1077,7 @@ function TJamMessageBase.KillMessage: Boolean;
 
   RepackIndex;
 
-  SetCurrent(Current - 1);
+  SetLocation(GetLocation - 1);
 
   KillMessage:=True;
  end;
@@ -1184,6 +1191,11 @@ procedure TJamMessageBase.GetStreams(var AHeaderLink, AIndexLink, ADataLink: PMe
   AHeaderLink:=HeaderLink;
   AIndexLink:=IndexLink;
   ADataLink:=DataLink;
+ end;
+
+procedure TJamMessageBase.SetCurrent(const ACurrentMessage: Longint);
+ begin
+  SetLocation(ACurrentMessage + JamBaseHeader.BaseMsgNum - 1);
  end;
 
 function TJamMessageBase.GetRead: Boolean;
