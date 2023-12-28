@@ -26,7 +26,7 @@ call build_vp.bat res release
 call build_vp.bat uw release
 echo Tornado/W32 %VERSION%/Release>out\file_id.diz
 echo Executables and resources only>>out\file_id.diz
-rar a -cl -k -ep Release\tornado-%VERSION%-win32.rar out\file_id.diz bin\* bin\useredit.exe doc\tornado\*
+rar a -cl -k -ep Release\tornado-%VERSION%-win32.rar out\file_id.diz bin\* doc\tornado\*
 goto end
 
 :tf
@@ -36,7 +36,7 @@ call build_vp.bat res release
 call build_bp.bat ud release
 echo Tornado/386 %VERSION%/Release>out\file_id.diz
 echo Executables and resources only>>out\file_id.diz
-rar a -cl -k -ep Release\tornado-%VERSION%-386.rar out\file_id.diz bin\* bin\useredit.exe doc\tornado\* d:\tools\dos32a\binw\dos32a.exe
+rar a -cl -k -ep Release\tornado-%VERSION%-386.rar out\file_id.diz bin\* doc\tornado\* d:\tools\dos32a\binw\dos32a.exe
 goto end
 
 :td
@@ -47,7 +47,7 @@ call build_bp.bat ud release
 call build_vp.bat dll release
 echo Tornado/DOS %VERSION%/Release>out\file_id.diz
 echo Executables and resources only>>out\file_id.diz
-rar a -cl -k -ep Release\tornado-%VERSION%-dos.rar out\file_id.diz bin\* bin\useredit.exe doc\tornado\*
+rar a -cl -k -ep Release\tornado-%VERSION%-dos.rar out\file_id.diz bin\* doc\tornado\*
 goto end
 
 :tp
@@ -58,7 +58,7 @@ call build_bp.bat ud release
 call build_vp.bat dll release
 echo Tornado/DPMI %VERSION%/Release>out\file_id.diz
 echo Executables and resources only>>out\file_id.diz
-rar a -cl -k -ep Release\tornado-%VERSION%-dpmi.rar out\file_id.diz bin\* bin\useredit.exe doc\tornado\*
+rar a -cl -k -ep Release\tornado-%VERSION%-dpmi.rar out\file_id.diz bin\* doc\tornado\* d:\dos\rtm.exe d:\dos\dpmi16bi.ovl
 goto end
 
 :src
