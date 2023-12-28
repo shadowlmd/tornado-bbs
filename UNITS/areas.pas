@@ -1950,8 +1950,21 @@ Begin
       Goto EndOfProc;
 
   Msg^. CreateNewMessage;
+
   If (PostMode = pmReply) And (cReply <> '') Then
     Msg^. SetKludge (#1'REPLY:', #1'REPLY: ' + cReply);
+
+  { This is merely a workaround, but proper solution requires
+    changes to LNG files, which would make sense only if
+    Tornado would be used by non-Russian systems. }
+  If R. Lang = 'RUSSIAN' Then
+    Msg^. SetKludge (#1'CHRS:', #1'CHRS: CP866 2');
+
+  S := #1'PID: ' + NameVer;
+  If Options And pfUpgrader <> 0 Then
+    S := S + ' upgrade manager';
+  Msg^. SetKludge (#1'PID:', S);
+
   Msg^. SetFrom (FromName);
   Msg^. SetTo (ToName);
   Msg^. SetSubject (mSubj);
@@ -1967,12 +1980,6 @@ Begin
 
   Msg^. SetFromAndToAddress (OrigAddr, DestAddr, True);
   Msg^. SetTextPos (Msg^. GetTextSize);
-
-  S := #1'PID: ' + NameVer;
-  If Options And pfUpgrader <> 0 Then
-    S := S + ' upgrade manager';
-
-  Msg^. PutString (S);
 
   If (MsgArea. AreaType = btNetmail) And
     (PostMode = pmReply) And
