@@ -1936,7 +1936,6 @@ Procedure PostFile;
     If NTVDMInitOk Then
     Begin
       NTVDMGetSystemTZUTC (@TZUTC, 6);
-      TZUTC := Az2Str (TZUTC, 6);
       GetSysTZUTC := True;
     End Else
       GetSysTZUTC := False;

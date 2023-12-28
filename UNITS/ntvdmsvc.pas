@@ -13,7 +13,7 @@ Procedure NTVDMInstallCtrlHandler;
 Procedure NTVDMSetSessionTitle (Title: PChar; Sz: Word);
 Procedure NTVDMGetSessionTitle (Title: PChar; Sz: Word);
 Procedure NTVDMSleep (Ms: Word);
-Procedure NTVDMGetSystemTZUTC (TZUTC: PChar; Sz: Word);
+Procedure NTVDMGetSystemTZUTC (TZUTC: Pointer; Sz: Word);
 
 Implementation
 
@@ -99,7 +99,7 @@ Asm
   pop ds
 End;
 
-Procedure NTVDMGetSystemTZUTC (TZUTC: PChar; Sz: Word); Assembler;
+Procedure NTVDMGetSystemTZUTC (TZUTC: Pointer; Sz: Word); Assembler;
 Asm
   push ds
 

@@ -10,13 +10,12 @@ library NTVDMclp;
 
 uses
      Windows,
-     Strings,
      vpSysLow;
 
 const
  WINOLDAPVERSION      = $001B;
                      
- clpVERSION           = $0100;
+ clpVERSION           = $0101;
                      
  clpfnGETVERSION      = $0000;
  clpfnINIT            = $0001;
@@ -345,7 +344,7 @@ procedure _titleGET;
 procedure _TZUTC;
  var
   Size: Longint;
-  Data: PChar;
+  Data: ^String;
  begin
   asm
    call getMSW
@@ -374,7 +373,7 @@ procedure _TZUTC;
    mov Data, eax
   end;
 
-  StrPCopy(Data, GetSystemTZUTC);
+  Data^ := GetSystemTZUTC;
 
   setCF(1)
  end;
