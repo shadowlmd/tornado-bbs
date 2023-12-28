@@ -91,6 +91,14 @@ Procedure GlobalSearch (Const WildCard: String; Mode: tFSearchMode;
 Implementation
 
 Uses
+{$IFDEF MSDOS}
+{$IFNDEF DPMI32}
+  NTVDMSVC,
+{$ENDIF}
+{$ENDIF}
+{$IFDEF WIN32}
+  Windows,
+{$ENDIF}
   Strings,
   skOpen;
 
@@ -114,6 +122,10 @@ Var
   LR            : Longint;
   H             : PMsgHead;
   LineBuf       : PChar;
+
+{$IFDEF WIN32}
+{$I INC\win.inc}
+{$ENDIF}
 
 Procedure SelectFGroup;
 Var
@@ -1915,6 +1927,30 @@ Procedure PostFile;
     Close (F);
   End;
 
+  Function GetSysTZUTC (Var TZUTC: String): Boolean;
+  Begin
+  {$IFDEF DPMI32}
+    GetSysTZUTC := False;
+  {$ELSE}
+  {$IFDEF MSDOS}
+    If NTVDMInitOk Then
+    Begin
+      NTVDMGetSystemTZUTC (@TZUTC, 6);
+      TZUTC := Az2Str (TZUTC, 6);
+      GetSysTZUTC := True;
+    End Else
+      GetSysTZUTC := False;
+  {$ELSE}
+  {$IFDEF WIN32}
+    TZUTC := GetSystemTZUTC;
+    GetSysTZUTC := True;
+  {$ELSE}
+    GetSysTZUTC := False;
+  {$ENDIF}
+  {$ENDIF}
+  {$ENDIF}
+  End;
+
 Var
   F       : Text;
   oArea   : tMsgArea;
@@ -1959,6 +1995,9 @@ Begin
     Tornado would be used by non-Russian systems. }
   If R. Lang = 'RUSSIAN' Then
     Msg^. SetKludge (#1'CHRS:', #1'CHRS: CP866 2');
+
+  If GetSysTZUTC (S) Then
+    Msg^. SetKludge (#1'TZUTC:', #1'TZUTC: ' + S);
 
   S := #1'PID: ' + NameVer;
   If Options And pfUpgrader <> 0 Then

@@ -44,6 +44,7 @@ call clean.bat
 call build_bp.bat td release
 call build_bp.bat res release
 call build_bp.bat ud release
+call build_vp.bat dll release
 echo Tornado/DOS %VERSION%/Release>out\file_id.diz
 echo Executables and resources only>>out\file_id.diz
 rar a -cl -k -ep Release\tornado-%VERSION%-dos.rar out\file_id.diz bin\* bin\useredit.exe doc\tornado\*
@@ -54,6 +55,7 @@ call clean.bat
 call build_bp.bat tp release
 call build_bp.bat res release
 call build_bp.bat ud release
+call build_vp.bat dll release
 echo Tornado/DPMI %VERSION%/Release>out\file_id.diz
 echo Executables and resources only>>out\file_id.diz
 rar a -cl -k -ep Release\tornado-%VERSION%-dpmi.rar out\file_id.diz bin\* bin\useredit.exe doc\tornado\*

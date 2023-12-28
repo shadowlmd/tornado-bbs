@@ -13,6 +13,7 @@ Procedure NTVDMInstallCtrlHandler;
 Procedure NTVDMSetSessionTitle (Title: PChar; Sz: Word);
 Procedure NTVDMGetSessionTitle (Title: PChar; Sz: Word);
 Procedure NTVDMSleep (Ms: Word);
+Procedure NTVDMGetSystemTZUTC (TZUTC: PChar; Sz: Word);
 
 Implementation
 
@@ -26,6 +27,7 @@ Const
   clpAppTerminated     = $0030;
   clpInstCtrlHandler   = $0031;
   clpUnInstCtrlHandler = $0032;
+  clpTZUTC             = $0040;
 
 Var
   RC, Handle: Word;
@@ -91,6 +93,21 @@ Asm
   mov cx, clptitleGET
 
   lds dx, Title
+
+  db $c4, $c4, $58, $02
+
+  pop ds
+End;
+
+Procedure NTVDMGetSystemTZUTC (TZUTC: PChar; Sz: Word); Assembler;
+Asm
+  push ds
+
+  mov ax, Handle
+  mov bx, Sz
+  mov cx, clpTZUTC
+
+  lds dx, TZUTC
 
   db $c4, $c4, $58, $02
 

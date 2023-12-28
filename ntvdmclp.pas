@@ -10,7 +10,7 @@ library NTVDMclp;
 
 uses
      Windows,
-
+     Strings,
      vpSysLow;
 
 const
@@ -39,6 +39,8 @@ const
  clpInstCtrlHandler   = $0031;
  clpUnInstCtrlHandler = $0032;
 
+ clpTZUTC             = $0040;
+
  AppTerminated : Boolean = False;
 
 procedure setCF(Value: SmallWord); external 'NTVDM.EXE';
@@ -57,6 +59,8 @@ function getBX: SmallWord; external 'NTVDM.EXE';
 function getES: SmallWord; external 'NTVDM.EXE';
 
 procedure MGetVdmPointer; external 'NTVDM.EXE';
+
+{$I INC\win.inc}
 
 { ntvdmclpRegister }
 
@@ -336,6 +340,45 @@ procedure _titleGET;
    setCF(0);
  end;
 
+{ Size is not used here, but I don't know how to properly
+  adjust the code, so I'll just leave it. }
+procedure _TZUTC;
+ var
+  Size: Longint;
+  Data: PChar;
+ begin
+  asm
+   call getMSW
+
+   and eax, 1
+   mov esi, eax
+
+   call getDS
+   xchg edi, eax
+   shl edi, 16
+
+   call getDX
+   xchg di, ax
+
+   call getBX
+   movzx ebx, ax
+
+   mov Size, ebx
+
+   push esi
+   push ebx
+   push edi
+
+   call MGetVdmPointer
+
+   mov Data, eax
+  end;
+
+  StrPCopy(Data, GetSystemTZUTC);
+
+  setCF(1)
+ end;
+
 { sleep.. zzz... }
 
 procedure _SLEEP;
@@ -406,6 +449,8 @@ procedure ntvdmclpDispatch; export;
    clpInstCtrlHandler: _InstCtrlHandler;
    clpUnInstCtrlHandler: _UnInstCtrlHandler;
    clpAppTerminated: _AppTerminated;
+
+   clpTZUTC: _TZUTC;
   else
    setCF(1);
   end;
