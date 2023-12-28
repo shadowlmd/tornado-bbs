@@ -9,8 +9,7 @@ library NTVDMclp;
 }
 
 uses
-     Windows,
-     vpSysLow;
+ Windows;
 
 const
  WINOLDAPVERSION      = $001B;
@@ -374,8 +373,6 @@ procedure _TZUTC;
   end;
 
   Data^ := GetSystemTZUTC;
-
-  setCF(1)
  end;
 
 { sleep.. zzz... }
