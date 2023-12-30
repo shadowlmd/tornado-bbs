@@ -346,13 +346,13 @@ function TSquishMessageBase.Exists(Message: Longint): Boolean;
   Index: TSquishIndex;
   IndexPos: Longint;
  begin
-  Exists:=CheckIndex(RelativeToAbsolute(Message), Index, IndexPos, False); {!!}
+  Exists:=CheckIndex(RelativeToAbsolute(Message), Index, IndexPos, False);
  end;
 
 procedure TSquishMessageBase.Seek(Message: Longint);
  begin
-  if CheckIndex(RelativeToAbsolute(Message), SquishIndex, SquishIndexPos, True) then {!!}
-   SetCurrent(AbsoluteToRelative(SquishIndex.Number)) {!!}
+  if CheckIndex(RelativeToAbsolute(Message), SquishIndex, SquishIndexPos, True) then
+   SetCurrent(AbsoluteToRelative(SquishIndex.Number))
   else
    begin
     SetCurrent(0);
@@ -373,7 +373,7 @@ procedure TSquishMessageBase.SeekNext;
    begin
     GetIndex(SquishIndexPos, SquishIndex);
 
-    SetCurrent(AbsoluteToRelative(SquishIndex.Number)); {!!}
+    SetCurrent(AbsoluteToRelative(SquishIndex.Number));
    end;
  end;
 
@@ -391,7 +391,7 @@ procedure TSquishMessageBase.SeekPrev;
    begin
     GetIndex(SquishIndexPos, SquishIndex);
 
-    SetCurrent(AbsoluteToRelative(SquishIndex.Number)); {!!}
+    SetCurrent(AbsoluteToRelative(SquishIndex.Number));
    end;
  end;
 
@@ -420,7 +420,7 @@ procedure TSquishMessageBase.SetLocation(Location: Longint);
     IndexLink^.Reset;
    end
   else
-   SetCurrent(AbsoluteToRelative(SquishIndex.Number)); {!!}
+   SetCurrent(AbsoluteToRelative(SquishIndex.Number));
  end;
 
 function TSquishMessageBase.OpenMessage: Boolean;
@@ -642,7 +642,7 @@ function TSquishMessageBase.CloseMessage: Boolean;
 
 function TSquishMessageBase.GetHighest: Longint;
  begin
-  GetHighest:=GetCount; {!!}
+  GetHighest:=RelativeToAbsolute(GetCount);
  end;
 
 function TSquishMessageBase.GetCount: Longint;
@@ -952,7 +952,7 @@ function TSquishMessageBase.CreateNewMessage: Boolean;
 
   RelativeTable^.Insert(Pointer(SquishBaseHeader.UID));
 
-  SquishMessageHeader.UID:=SquishBaseHeader.UID; {!! Current -> SquishBaseHeader.UID}
+  SquishMessageHeader.UID:=SquishBaseHeader.UID;
 
   Inc(SquishBaseHeader.UID);
 
@@ -960,14 +960,14 @@ function TSquishMessageBase.CreateNewMessage: Boolean;
 
   Inc(SquishBaseHeader.HighMsg);
 
-  SetCurrent(GetCount); {!! SquishBaseHeader.UID -> GetCount}
+  SetCurrent(GetCount);
 
   SquishFrame.ID:=SquishFrameID;
 
   SquishFramePosition:=0;
   SquishMessageHeader.Attr:=squishaUID;
 
-  SquishIndex.Number:=SquishMessageHeader.UID; {!! Current -> SquishMessageHeader.UID}
+  SquishIndex.Number:=SquishMessageHeader.UID;
 
   IndexLink^.Reset;
 
@@ -1022,7 +1022,7 @@ function TSquishMessageBase.KillMessage: Boolean;
 
   Dec(SquishIndexPos, SizeOf(SquishIndex));
 
-  RelativeTable^.AtDelete(Current - 1); {!!}
+  RelativeTable^.AtDelete(Current - 1);
 
   KillMessage:=True;
  end;
@@ -1045,7 +1045,7 @@ function TSquishMessageBase.GetLastRead(const UserNumber: Longint): Longint;
 
      Stream^.Read(LastRead, SizeOf(LastRead));
 
-     GetLastRead:=LastRead;
+     GetLastRead:=AbsoluteToRelative(LastRead);
     end;
 
   Dispose(Stream, Done);
@@ -1072,7 +1072,7 @@ procedure TSquishMessageBase.SetLastRead(const UserNumber: Longint; const Value:
      end;
    end;
 
-  LastRead:=Value;
+  LastRead:=RelativeToAbsolute(Value);
 
   Stream^.Seek(UserNumber * SizeOf(LastRead));
 
@@ -1132,7 +1132,7 @@ procedure TSquishMessageBase.SetHighWater(const AHighWater: Longint);
 procedure TSquishMessageBase.SeekHighWater;
  begin
   if CheckIndex(SquishBaseHeader.HighWater, SquishIndex, SquishIndexPos, True) then
-   SetCurrent(AbsoluteToRelative(SquishIndex.Number)) {!!}
+   SetCurrent(AbsoluteToRelative(SquishIndex.Number))
   else
    begin
     SetCurrent(0);

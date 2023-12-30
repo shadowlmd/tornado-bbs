@@ -12,18 +12,11 @@ unit skMHLmsg;
 
 interface
 uses
-     Objects,
+     tGlob,
      skMHL,
      skCommon;
 
 type
- PLongintCollection = ^TLongintCollection;
- TLongintCollection = object(TSortedCollection)
-  function Compare(Key1, Key2: Pointer): {$IFDEF VIRTUALPASCAL} Longint; {$ELSE} Integer; {$ENDIF} virtual;
-  procedure FreeItem(Item: Pointer); virtual;
-  procedure FreeAll; virtual;
- end;
-
  PFidoMessageBase = ^TFidoMessageBase;
  TFidoMessageBase = object(TMessageBase)
   constructor Init;
@@ -78,7 +71,7 @@ type
  private
   Link: PMessageBaseStream;
   Header: TFidoHeader;
-  RelativeTable: PLongintCollection;
+  RelativeTable: PSortedLongintCollection;
   function MapAttribute(var Attribute: Longint): Boolean;
   procedure InitRelativeTable; virtual;
   function AbsoluteToRelative(Message: Longint): Longint; virtual;
@@ -105,24 +98,6 @@ const
  faRRc               = $2000;
  faARq               = $4000;
  faURq               = $8000;
-
-{ TLongintCollection }
-
-function TLongintCollection.Compare(Key1, Key2: Pointer): {$IFDEF VIRTUALPASCAL} Longint; {$ELSE} Integer; {$ENDIF}
- begin
-  if Longint(Key1) < Longint(Key2) then Compare:=-1 else
-  if Longint(Key1) > Longint(Key2) then Compare:=1 else
-   Compare:=0;
- end;
-
-procedure TLongintCollection.FreeItem(Item: Pointer);
- begin
- end;
-
-procedure TLongintCollection.FreeAll;
- begin
-  Count:=0;
- end;
 
 { TFidoMessageBase }
 
@@ -308,82 +283,6 @@ function TFidoMessageBase.OpenMessageHeader: Boolean;
  begin
   OpenMessageHeader:=OpenMessage;
  end;
-
-(*
-function TFidoMessageBase.OpenMessageHeader: Boolean;
- var
-  vmb: PVirtualMessageBaseMHL;
-  Line: PChar;
- begin
-  OpenMessageHeader:=False;
-
-  if not Exists(Current) then
-   begin
-    SetStatus(fmbMessageNotFound);
-
-    Exit;
-   end;
-
-  if Link <> nil then
-   CloseMessage;
-
-  Link:=CreateMessageBaseFileStream(GetBasePath + LongToStr(RelativeToAbsolute(Current)) + '.MSG', smOpen);
-
-  if Link^.Status <> smOk then
-   begin
-    Dispose(Link, Done);
-
-    Link:=nil;
-
-    SetStatus(fmbCannotCreateStream);
-
-    Exit;
-   end;
-
-  SetMessageTextStream(CreateMessageBaseMemoryStream(MaxMessageSize));
-
-  if GetMessageTextStream^.Status <> smOk then
-   begin
-    Dispose(Link, Done);
-
-    SetMessageTextStream(nil);
-
-    Link:=nil;
-
-    SetStatus(fmbCannotCreateStream);
-
-    Exit;
-   end;
-
-  Link^.Seek(0);
-
-  Link^.Read(Header, SizeOf(Header));
-
-  vmb:=New(PVirtualMessageBaseMHL, Init(Link));
-
-  GetMem(Line, MaxLineSize);
-
-  vmb^.GetStringPChar(Line, MaxLineSize);
-
-  if Line[0] = #1 then
-   PutStringPChar(Line);
-
-  repeat
-   vmb^.GetStringPChar(Line, MaxLineSize);
-
-   if Line[0] <> #1 then
-    Break;
-
-   PutStringPChar(Line);
-  until False;
-
-  FreeMem(Line, MaxLineSize);
-
-  Dispose(vmb, Done);
-
-  OpenMessageHeader:=True;
- end;
-*)
 
 function TFidoMessageBase.CloseMessage: Boolean;
  begin
@@ -674,29 +573,14 @@ function TFidoMessageBase.WriteMessageHeader: Boolean;
   WriteMessageHeader:=WriteMessage;
  end;
 
-(*
-function TFidoMessageBase.WriteMessageHeader: Boolean;
- begin
-  Link^.Seek(0);
-
-  Link^.Write(Header, SizeOf(Header));
-
-  WriteMessageHeader:=True;
- end;
-*)
-
 function TFidoMessageBase.CreateNewMessage: Boolean;
- var
-  N: Longint;
  begin
   CreateNewMessage:=False;
 
   if Link <> nil then
    CloseMessage;
 
-  N:=GetHighest + 1;
-
-  Link:=CreateMessageBaseFileStream(GetBasePath + LongToStr(N) + '.MSG', smCreate);
+  Link:=CreateMessageBaseFileStream(GetBasePath + LongToStr(GetHighest + 1) + '.MSG', smCreate);
 
   if Link^.Status <> smOk then
    begin
@@ -720,7 +604,8 @@ function TFidoMessageBase.CreateNewMessage: Boolean;
     Exit;
    end;
 
-  RelativeTable^.Insert(Pointer(N));
+  RelativeTable^.Insert(Pointer(GetHighest + 1));
+
   SetCurrent(GetCount);
 
   FillChar(Header, SizeOf(Header), 0);
@@ -763,7 +648,7 @@ function TFidoMessageBase.GetLastRead(const UserNumber: Longint): Longint;
 
      Stream^.Read(LastRead, SizeOf(LastRead));
 
-     GetLastRead:=LastRead;
+     GetLastRead:=AbsoluteToRelative(LastRead);
     end;
 
   Dispose(Stream, Done);
@@ -787,7 +672,7 @@ procedure TFidoMessageBase.SetLastRead(const UserNumber: Longint; const Value: L
     begin
      Stream^.Seek(UserNumber * SizeOf(LastRead));
 
-     LastRead:=Value;
+     LastRead:=RelativeToAbsolute(Value);
 
      Stream^.Write(LastRead, SizeOf(LastRead));
     end;
