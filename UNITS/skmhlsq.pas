@@ -642,8 +642,7 @@ function TSquishMessageBase.CloseMessage: Boolean;
 
 function TSquishMessageBase.GetHighest: Longint;
  begin
-  {GetHighest:=SquishBaseHeader.UID - 1;}
-  GetHighest:=RelativeToAbsolute(GetCount); {!!}
+  GetHighest:=GetCount; {!!}
  end;
 
 function TSquishMessageBase.GetCount: Longint;
@@ -1024,6 +1023,7 @@ function TSquishMessageBase.KillMessage: Boolean;
   Dec(SquishIndexPos, SizeOf(SquishIndex));
 
   RelativeTable^.AtDelete(Current - 1); {!!}
+
   KillMessage:=True;
  end;
 
