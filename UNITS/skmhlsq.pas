@@ -980,7 +980,7 @@ function TSquishMessageBase.CreateNewMessage: Boolean;
 
   Inc(SquishBaseHeader.HighMsg);
 
-  SetCurrent(SquishBaseHeader.NumMsg); {!!}
+  SetCurrent(GetCount); {!! SquishBaseHeader.UID -> GetCount}
 
   SquishFrame.ID:=SquishFrameID;
 
