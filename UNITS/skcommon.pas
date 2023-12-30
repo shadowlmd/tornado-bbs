@@ -60,7 +60,7 @@ type
   Zone, Net, Node, Point: System.Word;
  end;
 
- TSquishMessageReplies = array[1..9] of LongInt;
+ TSquishMessageReplies = array[1..9] of Longint;
 
  TSquishBaseHeader = packed record
   Len: System.Word;
@@ -83,7 +83,7 @@ type
  end;
 
  TSquishMessageHeader = packed record
-  Attr: LongInt;
+  Attr: Longint;
   MsgFrom: array[1..36] of Char;
   MsgTo: array[1..36] of Char;
   Subj: array[1..72] of Char;
@@ -397,9 +397,9 @@ function IsValidMessageBaseDateTime(var DateTime: TMessageBaseDateTime): Boolean
 procedure GetCurrentMessageBaseDateTime(var DateTime: TMessageBaseDateTime);
 procedure MessageBaseDateTimeToDosDateTime(var DateTime: TMessageBaseDateTime; var DosDateTime: Longint);
 procedure DosDateTimeToMessageBaseDateTime(var DosDateTime: Longint; var DateTime: TMessageBaseDateTime);
-function GregorianToJulian(DateTime: TMessageBaseDateTime): LongInt;
-procedure JulianToGregorian(JulianDN: LongInt; var Year, Month, Day: Word);
-procedure UnixDateTimeToMessageBaseDateTime(SecsPast: LongInt; var DateTime: TMessageBaseDateTime);
+function GregorianToJulian(DateTime: TMessageBaseDateTime): Longint;
+procedure JulianToGregorian(JulianDN: Longint; var Year, Month, Day: Word);
+procedure UnixDateTimeToMessageBaseDateTime(SecsPast: Longint; var DateTime: TMessageBaseDateTime);
 procedure MessageBaseDateTimeToUnixDateTime(const DateTime: TMessageBaseDateTime; var SecsPast: Longint);
 procedure MessageBaseDateTimeToMSGDateTime(const DT: TMessageBaseDateTime; var L: Longint);
 procedure MSGDateTimeToMessageBaseDateTime(const A: Longint; var DT: TMessageBaseDateTime);
@@ -1017,11 +1017,11 @@ procedure DosDateTimeToMessageBaseDateTime(var DosDateTime: Longint; var DateTim
    end;
  end;
 
-function GregorianToJulian(DateTime: TMessageBaseDateTime): LongInt;
+function GregorianToJulian(DateTime: TMessageBaseDateTime): Longint;
  var
-  Century: LongInt;
-  XYear: LongInt;
-  Month: LongInt;
+  Century: Longint;
+  XYear: Longint;
+  Month: Longint;
  begin
   Month:=DateTime.Month;
   if Month <= 2 then
@@ -1037,9 +1037,9 @@ function GregorianToJulian(DateTime: TMessageBaseDateTime): LongInt;
   GregorianToJulian:=((((Month * 153) + 2) div 5) + DateTime.Day) + D2 + XYear + Century;
  end;
 
-procedure JulianToGregorian(JulianDN: LongInt; var Year, Month, Day: Word);
+procedure JulianToGregorian(JulianDN: Longint; var Year, Month, Day: Word);
  var
-  Temp, XYear: LongInt;
+  Temp, XYear: Longint;
   YYear, YMonth, YDay: Integer;
  begin
   Temp:=(((JulianDN - D2) shl 2) - 1);
@@ -1063,9 +1063,9 @@ procedure JulianToGregorian(JulianDN: LongInt; var Year, Month, Day: Word);
   Day:=YDay;
  end;
 
-procedure UnixDateTimeToMessageBaseDateTime(SecsPast: LongInt; var DateTime: TMessageBaseDateTime);
+procedure UnixDateTimeToMessageBaseDateTime(SecsPast: Longint; var DateTime: TMessageBaseDateTime);
  var
-  DateNum: LongInt;
+  DateNum: Longint;
   Year, Month, Day: Word;
  begin
   if SecsPast < 0 then
@@ -1090,11 +1090,11 @@ procedure UnixDateTimeToMessageBaseDateTime(SecsPast: LongInt; var DateTime: TMe
 
 procedure MessageBaseDateTimeToUnixDateTime(const DateTime: TMessageBaseDateTime; var SecsPast: Longint);
  var
-  DaysPast: LongInt;
+  DaysPast: Longint;
  begin
   DaysPast:=GregorianToJulian(DateTime) - c1970;
   SecsPast:=DaysPast * 86400;
-  SecsPast:=SecsPast + (LongInt(DateTime.Hour) * 3600) + (DateTime.Min * 60) + (DateTime.Sec);
+  SecsPast:=SecsPast + (Longint(DateTime.Hour) * 3600) + (DateTime.Min * 60) + (DateTime.Sec);
  end;
 
 procedure MonthStringToMonthNumber(S: String; var Month: Word);

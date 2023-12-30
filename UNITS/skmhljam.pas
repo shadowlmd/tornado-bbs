@@ -125,12 +125,12 @@ type
   function KillMessage: Boolean; virtual;
   function GetLastRead(const UserNumber: Longint): Longint; virtual;
   procedure SetLastRead(const UserNumber: Longint; const Value: Longint); virtual;
-  function GetReplyTo: LongInt;
-  function GetReplyFirst: LongInt;
-  function GetReplyNext: LongInt;
-  procedure SetReplyTo(const AReplyTo: LongInt);
-  procedure SetReplyFirst(const AReplyFirst: LongInt);
-  procedure SetReplyNext(const AReplyNext: LongInt);
+  function GetReplyTo: Longint;
+  function GetReplyFirst: Longint;
+  function GetReplyNext: Longint;
+  procedure SetReplyTo(const AReplyTo: Longint);
+  procedure SetReplyFirst(const AReplyFirst: Longint);
+  procedure SetReplyNext(const AReplyNext: Longint);
   procedure GetMessageHeader(var AHeader: TJamMessageHeaderFirst);
   procedure GetStreams(var AHeaderLink, AIndexLink, ADataLink: PMessageBaseStream);
   function GetRead: Boolean; virtual;
@@ -1145,32 +1145,32 @@ procedure TJamMessageBase.SetLastRead(const UserNumber: Longint; const Value: Lo
   LastReadLink^.Write(LastRead, SizeOf(LastRead));
  end;
 
-function TJamMessageBase.GetReplyTo: LongInt;
+function TJamMessageBase.GetReplyTo: Longint;
  begin
   GetReplyTo:=JamMessageHeader.JamHeader.ReplyTo;
  end;
 
-function TJamMessageBase.GetReplyFirst: LongInt;
+function TJamMessageBase.GetReplyFirst: Longint;
  begin
   GetReplyFirst:=JamMessageHeader.JamHeader.ReplyFirst;
  end;
 
-function TJamMessageBase.GetReplyNext: LongInt;
+function TJamMessageBase.GetReplyNext: Longint;
  begin
   GetReplyNext:=JamMessageHeader.JamHeader.ReplyNext;
  end;
 
-procedure TJamMessageBase.SetReplyTo(const AReplyTo: LongInt);
+procedure TJamMessageBase.SetReplyTo(const AReplyTo: Longint);
  begin
   JamMessageHeader.JamHeader.ReplyTo:=AReplyTo;
  end;
 
-procedure TJamMessageBase.SetReplyFirst(const AReplyFirst: LongInt);
+procedure TJamMessageBase.SetReplyFirst(const AReplyFirst: Longint);
  begin
   JamMessageHeader.JamHeader.ReplyFirst:=AReplyFirst;
  end;
 
-procedure TJamMessageBase.SetReplyNext(const AReplyNext: LongInt);
+procedure TJamMessageBase.SetReplyNext(const AReplyNext: Longint);
  begin
   JamMessageHeader.JamHeader.ReplyNext:=AReplyNext;
  end;
