@@ -923,10 +923,14 @@ Begin
     CheckAndOpenMsgArea := OpenMessageArea (True, True);
 End;
 
-Procedure ReplyToCurrMsg (Const Tpl: String);
+Function ReplyToCurrMsg (Const Tpl: String): Boolean;
 Begin
   If PostMsg (pmReply, H^. MsgFrom, {H^. eReplyTo,} H^. MsgSubj, Tpl) Then
+  Begin
     LogWrite ('+', sm (smAnswerInArea) + ZeroMsg (MsgArea. Name, True));
+    ReplyToCurrMsg := True;
+  End Else
+    ReplyToCurrMsg := False;
 End;
 
 Procedure ReadMsgs;
@@ -1001,9 +1005,9 @@ Begin
         End;
 
         Case i Of
-           1 : Continue;                               {Again}
+           1 : Continue;                                            {Again}
 
-           2 : Begin                                   {Delete}
+           2 : Begin                                               {Delete}
                  If ((H^. MsgFrom <> R. Name) Or
                      (AddressCompare(H^. FromAddr, MsgArea. Address) <> 0)) And
                     (MsgArea. SysOpSec > R. Security) Or
@@ -1037,9 +1041,9 @@ Begin
                    Continue;
                End;
 
-        3, 4 : ;                                       {Next}
+        3, 4 : ;                                                     {Next}
 
-           5 : Begin                                   {Last}
+           5 : Begin                                                 {Last}
                  Msg^. SeekPrev;
 
                  If Msg^. SeekFound Then
@@ -1054,26 +1058,11 @@ Begin
                  End;
                End;
 
-           6 : If Not (H^. IsPriv And DontShowMsg (H^. MsgFrom,      {Reply}
+           6 : If Not (H^. IsPriv And DontShowMsg (H^. MsgFrom,     {Reply}
                   H^. MsgTo, H^. FromAddr, H^.ToAddr)) Then
                Begin
-                 ReplyToCurrMsg ('menu');
-                 Cls;
-                 Message (lang (laMsgSaved));
-                 Msg^. Seek (H^. MsgNum);
-                 If Msg^. SeekFound Then
-                   Continue;
-               End Else
-               Begin
-                 ComWriteLn ('', 0);
-                 Goto ReSelect;
-               End;
-
-           7 : Begin                                                 {Post}
-                 If PostMsg (pmNew, '', {'',} '', 'menu') Then
+                 If ReplyToCurrMsg ('menu') Then
                  Begin
-                   LogWrite ('+', sm (smlPosting) + ZeroMsg (MsgArea. Name,
-                     True));
                    Cls;
                    Message (lang (laMsgSaved));
                    Msg^. Seek (H^. MsgNum);
@@ -1081,7 +1070,20 @@ Begin
                      Continue;
                  End Else
                    Continue;
-               End;
+               End Else
+                 Continue;
+
+           7 : If PostMsg (pmNew, '', {'',} '', 'menu') Then         {Post}
+               Begin
+                 LogWrite ('+', sm (smlPosting) + ZeroMsg (MsgArea. Name,
+                   True));
+                 Cls;
+                 Message (lang (laMsgSaved));
+                 Msg^. Seek (H^. MsgNum);
+                 If Msg^. SeekFound Then
+                   Continue;
+               End Else
+                 Continue;
 
            8 : Begin                                             {To begin}
                  Msg^. Seek (1);
@@ -1095,7 +1097,7 @@ Begin
                  Continue;
                End;
 
-           9 : Begin                                             {To end}
+           9 : Begin                                               {To end}
                  Msg^. Seek (Msg^. GetCount);
                  If Not Msg^. SeekFound Then
                  Begin
@@ -1107,7 +1109,7 @@ Begin
                  Continue;
                End;
 
-          10 : Break;                                            {Stop}
+          10 : Break;                                                {Stop}
         End;
       End;
 
