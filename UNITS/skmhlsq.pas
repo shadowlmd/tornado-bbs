@@ -117,7 +117,7 @@ type
   SquishIndexPos: Longint;
   DataLink: PMessageBaseStream;
   IndexLink: PMessageBaseStream;
-  RelativeTable: PLongintCollection;
+  RelativeTable: PLongIntCollection;
   procedure GetIndex(const Pos: Longint; var Index: TSquishIndex);
   procedure SetIndex(const Pos: Longint; var Index: TSquishIndex);
   function CheckIndex(const Message: Longint; var Index: TSquishIndex; var IndexPos: Longint; const Nearest: Boolean): Boolean;

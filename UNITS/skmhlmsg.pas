@@ -71,7 +71,7 @@ type
  private
   Link: PMessageBaseStream;
   Header: TFidoHeader;
-  RelativeTable: PSortedLongintCollection;
+  RelativeTable: PSortedLongIntCollection;
   function MapAttribute(var Attribute: Longint): Boolean;
   procedure InitRelativeTable; virtual;
   function AbsoluteToRelative(Message: Longint): Longint; virtual;
