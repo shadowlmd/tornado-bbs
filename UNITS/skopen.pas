@@ -11,14 +11,12 @@ unit skOpen;
 
 interface
 uses
-     skMHL,
-
-     skMHLmsg,
-     skMHLjam,
-     skMHLsq,
-
-     skCommon,
-     tMisc;
+ skMHL,
+ skMHLmsg,
+ skMHLjam,
+ skMHLsq,
+ skCommon,
+ tMisc;
 
 var
  OpenStatus: Longint;
@@ -27,7 +25,7 @@ type
  TMessageBaseOpenProcess = function(var Base: PMessageBase; const ID: String): Boolean;
 
 const
- AttemptDelay   = 1000;
+ AttemptDelay = 1000;
 
 procedure SplitID(const ID: String; var Format: TMessageBaseFormat; var Path: String);
 

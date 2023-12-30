@@ -1,7 +1,6 @@
 {$R-,B-,F+}
-{&Use32-}
 Unit
-  NTVDMSVC;
+  NTVDMSvc;
 
 Interface
 

@@ -211,17 +211,9 @@
 {&Use32-}
 unit skMHL;
 
-{$IFDEF DELPHI}
- {$WARNINGS OFF}
- {$HINTS OFF}
-{$ENDIF}
-
 interface
 uses
-     skCommon;
-
-const
- skMHLdllsuffix = '/DLL';
+ skCommon;
 
 type
  PMessageBase = ^TMessageBase;

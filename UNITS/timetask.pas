@@ -56,7 +56,7 @@ Uses
 {$IFDEF MSDOS}
 {$IFNDEF DPMI32}
 Uses
-  NTVDMSVC;
+  NTVDMSvc;
 {$ENDIF}
 {$ENDIF}
 

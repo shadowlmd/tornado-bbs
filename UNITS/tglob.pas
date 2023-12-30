@@ -513,7 +513,7 @@ Implementation
 Uses
 {$IFDEF MSDOS}
 {$IFNDEF DPMI32}
-  NTVDMSVC,
+  NTVDMSvc,
 {$ENDIF}
 {$ENDIF}
   Strings;

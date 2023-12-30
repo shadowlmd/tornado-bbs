@@ -17,9 +17,9 @@ unit skMHLsq;
 
 interface
 uses
-     tGlob,
-     skMHL,
-     skCommon;
+ tGlob,
+ skMHL,
+ skCommon;
 
 const
  squishFrameID          = $AFAE4453;
@@ -206,6 +206,7 @@ function TSquishMessageBase.Open(const Path: String): Boolean;
 
    Open:=True;
    SetOpened(True);
+
    InitRelativeTable;
 
    Exit;
@@ -289,7 +290,7 @@ function TSquishMessageBase.Create(const Path: String): Boolean;
 
    DataLink^.Write(SquishBaseHeader, SizeOf(SquishBaseHeader));
 
-   New(RelativeTable, Init(5, 5));
+   New(RelativeTable, Init(1, 1));
    Create:=True;
    SetOpened(True);
 
@@ -1406,7 +1407,7 @@ procedure TSquishMessageBase.InitRelativeTable;
 
   Countdown:=IndexLink^.GetSize div SizeOf(TSquishIndex);
 
-  New(RelativeTable, Init(GetCount, 5));
+  New(RelativeTable, Init(GetCount, 1));
 
   while Countdown <> 0 do
    begin

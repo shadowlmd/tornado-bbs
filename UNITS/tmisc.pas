@@ -403,7 +403,7 @@ Uses
   Strings,
 {$IFDEF MSDOS}
 {$IFNDEF DPMI32}
-  NTVDMSVC,
+  NTVDMSvc,
 {$ENDIF}
 {$ENDIF}
   tGlob,

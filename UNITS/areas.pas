@@ -93,7 +93,7 @@ Implementation
 Uses
 {$IFDEF MSDOS}
 {$IFNDEF DPMI32}
-  NTVDMSVC,
+  NTVDMSvc,
 {$ENDIF}
 {$ENDIF}
 {$IFDEF WIN32}
@@ -1121,7 +1121,7 @@ Begin
         ComWriteLn (lang (laNoMoreMessages), eoMacro + eoCodes);
         If PauseAfterEach Then
         Begin
-          Msg^. Seek (Msg^. GetHighest);
+          Msg^. Seek (Msg^. GetCount);
           Goto ReSelect;
         End;
 

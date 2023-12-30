@@ -12,9 +12,9 @@ unit skMHLmsg;
 
 interface
 uses
-     tGlob,
-     skMHL,
-     skCommon;
+ tGlob,
+ skMHL,
+ skCommon;
 
 type
  PFidoMessageBase = ^TFidoMessageBase;
@@ -164,7 +164,7 @@ function TFidoMessageBase.Create(const Path: String): Boolean;
   if not CreateDirectory(GetBasePath) then
    Exit;
 
-  New(RelativeTable, Init(5, 5));
+  New(RelativeTable, Init(1, 1));
 
   Create:=True;
 
@@ -754,32 +754,6 @@ procedure TFidoMessageBase.SetRead(const Value: Boolean);
 
 { private methods }
 
-procedure TFidoMessageBase.InitRelativeTable;
- var
-  Find: PMessageBaseFind;
-{$IFDEF VIRTUALPASCAL}
-  Num, Code: Longint;
-{$ELSE}
-  Num, Code: Integer;
-{$ENDIF}
- begin
-  New(RelativeTable, Init(10, 10));
-
-  Find:=CreateMessageBaseFind;
-
-  if Find^.StartSearch(GetBasePath + '*.MSG', faAnyFile - faDirectory - faVolumeID) then
-   repeat
-    Val(Copy(Find^.iName, 1, Pos('.', Find^.iName) - 1), Num, Code);
-
-    if (Code = 0) and (Num > 0) then
-      RelativeTable^.Insert(Pointer(Num));
-   until not Find^.NextSearch;
-
-  Find^.StopSearch;
-
-  Dispose(Find, Done);
- end;
-
 function TFidoMessageBase.MapAttribute(var Attribute: Longint): Boolean;
  procedure DoMapping(const AAttribute: Longint);
   begin
@@ -807,6 +781,32 @@ function TFidoMessageBase.MapAttribute(var Attribute: Longint): Boolean;
   else
    MapAttribute:=False;
   end;
+ end;
+
+procedure TFidoMessageBase.InitRelativeTable;
+ var
+  Find: PMessageBaseFind;
+{$IFDEF VIRTUALPASCAL}
+  Num, Code: Longint;
+{$ELSE}
+  Num, Code: Integer;
+{$ENDIF}
+ begin
+  New(RelativeTable, Init(5, 5));
+
+  Find:=CreateMessageBaseFind;
+
+  if Find^.StartSearch(GetBasePath + '*.MSG', faAnyFile - faDirectory - faVolumeID) then
+   repeat
+    Val(Copy(Find^.iName, 1, Pos('.', Find^.iName) - 1), Num, Code);
+
+    if (Code = 0) and (Num > 0) then
+      RelativeTable^.Insert(Pointer(Num));
+   until not Find^.NextSearch;
+
+  Find^.StopSearch;
+
+  Dispose(Find, Done);
  end;
 
 function TFidoMessageBase.AbsoluteToRelative(Message: Longint): Longint;
