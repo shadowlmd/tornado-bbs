@@ -17,7 +17,7 @@ unit skMHLsq;
 
 interface
 uses
-     Objects,
+     tGlob,
      skMHL,
      skCommon;
 
@@ -50,12 +50,6 @@ const
  SquishKeepDays         : Longint = $7FFF;
 
 type
- PLongintCollection = ^TLongintCollection;
- TLongintCollection = object(TCollection)
-  procedure FreeItem(Item: Pointer); virtual;
-  procedure FreeAll; virtual;
- end;
-
  PControlInformationBuffer = ^TControlInformationBuffer;
  TControlInformationBuffer = array[1..65521] of Char;
 
@@ -143,19 +137,6 @@ type
  end;
 
 implementation
-
-{ TLongintCollection }
-
-procedure TLongintCollection.FreeItem(Item: Pointer);
- begin
- end;
-
-procedure TLongintCollection.FreeAll;
- begin
-  Count:=0;
- end;
-
-{ TSquishMessageBase }
 
 constructor TSquishMessageBase.Init;
  begin
