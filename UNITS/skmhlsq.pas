@@ -62,7 +62,6 @@ type
   function Exist(const Path: String): Boolean; virtual;
   procedure Close; virtual;
   procedure PreparePath(const Path: String); virtual;
-  function Exists(Message: Longint): Boolean; virtual;
   procedure Seek(Message: Longint); virtual;
   procedure SeekNext; virtual;
   procedure SeekPrev; virtual;
@@ -117,7 +116,7 @@ type
   SquishIndexPos: Longint;
   DataLink: PMessageBaseStream;
   IndexLink: PMessageBaseStream;
-  RelativeTable: PLongintCollection;
+  RelativeTable: PSortedLongintCollection;
   procedure GetIndex(const Pos: Longint; var Index: TSquishIndex);
   procedure SetIndex(const Pos: Longint; var Index: TSquishIndex);
   function CheckIndex(const Message: Longint; var Index: TSquishIndex; var IndexPos: Longint; const Nearest: Boolean): Boolean;
@@ -290,9 +289,10 @@ function TSquishMessageBase.Create(const Path: String): Boolean;
 
    DataLink^.Write(SquishBaseHeader, SizeOf(SquishBaseHeader));
 
-   New(RelativeTable, Init(1, 1));
    Create:=True;
    SetOpened(True);
+
+   New(RelativeTable, Init(1, 1));
 
    Exit;
   until True;
@@ -340,14 +340,6 @@ procedure TSquishMessageBase.PreparePath(const Path: String);
    SetBasePath(Path + '.')
   else
    SetBasePath(Path);
- end;
-
-function TSquishMessageBase.Exists(Message: Longint): Boolean;
- var
-  Index: TSquishIndex;
-  IndexPos: Longint;
- begin
-  Exists:=CheckIndex(RelativeToAbsolute(Message), Index, IndexPos, False);
  end;
 
 procedure TSquishMessageBase.Seek(Message: Longint);
@@ -1424,9 +1416,10 @@ function TSquishMessageBase.AbsoluteToRelative(Message: Longint): Longint;
 
 function TSquishMessageBase.RelativeToAbsolute(Message: Longint): Longint;
  begin
-  if (Message < 1) or (Message > GetCount) then
+  if not Exists(Message) then
    begin
     RelativeToAbsolute:=0;
+
     Exit;
    end;
 

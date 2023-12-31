@@ -12,6 +12,7 @@ unit skMHLjam;
 
 interface
 uses
+ tGlob,
  skMHL,
  skCommon;
 
@@ -93,7 +94,6 @@ type
   function Create(const Path: String): Boolean; virtual;
   function Exist(const Path: String): Boolean; virtual;
   procedure Close; virtual;
-  function Exists(Message: Longint): Boolean; virtual;
   function GetLocation: Longint; virtual;
   procedure SetLocation(Location: Longint); virtual;
   function OpenMessage: Boolean; virtual;
@@ -151,11 +151,15 @@ type
   HeaderLink: PMessageBaseStream;
   IndexLink: PMessageBaseStream;
   DataLink: PMessageBaseStream;
+  RelativeTable: PSortedLongintCollection;
   function GetSubField(const Number: Longint; var ID: Longint; var S: String): Boolean;
   procedure AddSubField(const ID: Longint; const S: String);
   function MapAttribute(var Attribute: Longint): Boolean;
   function StrCrc32(const S: String): Longint;
   procedure ResetAll;
+  procedure InitRelativeTable; virtual;
+  function AbsoluteToRelative(Message: Longint): Longint; virtual;
+  function RelativeToAbsolute(Message: Longint): Longint; virtual;
  end;
 
 implementation
@@ -277,6 +281,8 @@ function TJamMessageBase.Open(const Path: String): Boolean;
 
    SetOpened(True);
 
+   InitRelativeTable;
+
    Exit;
   until True;
 
@@ -385,6 +391,8 @@ function TJamMessageBase.Create(const Path: String): Boolean;
 
    SetOpened(True);
 
+   New(RelativeTable, Init(1, 1));
+
    Exit;
   until True;
 
@@ -423,10 +431,14 @@ function TJamMessageBase.Exist(const Path: String): Boolean;
 
 procedure TJamMessageBase.Close;
  begin
+  if not GetOpened then
+   Exit;
+
   if (HeaderLink = nil) or
      (IndexLink = nil) or
      (DataLink = nil) or
-     (LastReadLink = nil) then Exit;
+     (LastReadLink = nil) then
+   Exit;
 
   CloseMessage;
 
@@ -444,38 +456,15 @@ procedure TJamMessageBase.Close;
   Dispose(IndexLink, Done);
   Dispose(HeaderLink, Done);
   Dispose(LastReadLink, Done);
+  Dispose(RelativeTable, Done);
 
   HeaderLink:=nil;
   IndexLink:=nil;
   DataLink:=nil;
   LastReadLink:=nil;
+  RelativeTable:=nil;
 
   SetOpened(False);
- end;
-
-function TJamMessageBase.Exists(Message: Longint): Boolean;
- var
-  AJamIndexPosition: Longint;
-  AJamIndex: TJamIndex;
- begin
-  Exists:=False;
-
-  if (Message >= JamBaseHeader.BaseMsgNum) and (Message <= GetHighest) then
-   begin
-    AJamIndexPosition:=(Message - JamBaseHeader.BaseMsgNum) * SizeOf(AJamIndex);
-
-    IndexLink^.Seek(AJamIndexPosition);
-
-    if IndexLink^.Status <> smOk then
-     Exit;
-
-    IndexLink^.Read(AJamIndex, SizeOf(AJamIndex));
-
-    if AJamIndex.HdrLoc = -1 then
-     Exit;
-
-    Exists:=True;
-   end;
  end;
 
 function TJamMessageBase.GetLocation: Longint;
@@ -499,7 +488,7 @@ function TJamMessageBase.OpenMessage: Boolean;
 
   OpenMessage:=False;
 
-  JamIndexPosition:=(Current - JamBaseHeader.BaseMsgNum) * SizeOf(JamIndex);
+  JamIndexPosition:=(RelativeToAbsolute(Current) - JamBaseHeader.BaseMsgNum) * SizeOf(JamIndex);
 
   IndexLink^.Seek(JamIndexPosition);
 
@@ -641,7 +630,7 @@ function TJamMessageBase.OpenMessageHeader: Boolean;
 
   OpenMessageHeader:=False;
 
-  JamIndexPosition:=(Current - JamBaseHeader.BaseMsgNum) * SizeOf(JamIndex);
+  JamIndexPosition:=(RelativeToAbsolute(Current) - JamBaseHeader.BaseMsgNum) * SizeOf(JamIndex);
 
   IndexLink^.Seek(JamIndexPosition);
 
@@ -754,7 +743,7 @@ function TJamMessageBase.GetHighest: Longint;
 
 function TJamMessageBase.GetCount: Longint;
  begin
-  GetCount:=JamBaseHeader.ActiveMsgs;
+  GetCount:=RelativeTable^.Count;
  end;
 
 function TJamMessageBase.GetFrom: String;
@@ -1017,8 +1006,6 @@ function TJamMessageBase.CreateNewMessage: Boolean;
 
   Inc(JamBaseHeader.ActiveMsgs);
 
-  SetCurrent(GetHighest + 1);
-
   FillChar(JamMessageHeader, SizeOf(JamMessageHeader), 0);
   FillChar(JamInfo, SizeOf(JamInfo), 0);
 
@@ -1037,7 +1024,11 @@ function TJamMessageBase.CreateNewMessage: Boolean;
   JamMessageHeader.JamHeader.REPLYCrc:=$FFFFFFFF;
   JamMessageHeader.JamHeader.PwdCrc:=$FFFFFFFF;
 
-  JamMessageHeader.JamHeader.MsgNum:=Current;
+  JamMessageHeader.JamHeader.MsgNum:=GetHighest + 1;
+
+  RelativeTable^.Insert(Pointer(JamMessageHeader.JamHeader.MsgNum));
+
+  SetCurrent(RelativeTable^.Count);
 
   GetCurrentMessageBaseDateTime(DateTime);
   SetWrittenDateTime(DateTime);
@@ -1051,12 +1042,17 @@ function TJamMessageBase.CreateNewMessage: Boolean;
 
 function TJamMessageBase.KillMessage: Boolean;
  begin
+  KillMessage:=False;
+
+  if not Exists(Current) then
+   Exit;
+
   ResetAll;
 
   JamIndex.MsgToCrc:=-1;
   JamIndex.HdrLoc:=-1;
 
-  JamIndexPosition:=(Current - JamBaseHeader.BaseMsgNum) * SizeOf(JamIndex);
+  JamIndexPosition:=(RelativeToAbsolute(Current) - JamBaseHeader.BaseMsgNum) * SizeOf(JamIndex);
 
   IndexLink^.Seek(JamIndexPosition);
   IndexLink^.Write(JamIndex, SizeOf(JamIndex));
@@ -1064,6 +1060,8 @@ function TJamMessageBase.KillMessage: Boolean;
   Dec(JamBaseHeader.ActiveMsgs);
 
   SetCurrent(Current - 1);
+
+  RelativeTable^.AtDelete(Current); { we are actually deleting entry for Current + 1 here because it's 0-based }
 
   KillMessage:=True;
  end;
@@ -1085,7 +1083,7 @@ function TJamMessageBase.GetLastRead(const UserNumber: Longint): Longint;
 
     if LastRead.UserNumber = UserNumber then
      begin
-      GetLastRead:=LastRead.LastRead;
+      GetLastRead:=AbsoluteToRelative(LastRead.LastRead);
 
       Exit;
      end;
@@ -1113,9 +1111,12 @@ procedure TJamMessageBase.SetLastRead(const UserNumber: Longint; const Value: Lo
 
     if LastRead.UserNumber = UserNumber then
      begin
-      LastRead.LastRead:=Value;
+      LastRead.LastRead:=RelativeToAbsolute(Value);
 
-      LastRead.HighRead:=Value;
+      if (RelativeToAbsolute(Value) > LastRead.HighRead) or
+         (LastRead.HighRead > GetHighest)
+      then
+       LastRead.HighRead:=RelativeToAbsolute(Value);
 
       LastReadLink^.Seek(LastReadLink^.GetPos - SizeOf(LastRead));
 
@@ -1128,9 +1129,12 @@ procedure TJamMessageBase.SetLastRead(const UserNumber: Longint; const Value: Lo
    end;
 
   LastRead.UserNumber:=UserNumber;
-  LastRead.HighRead:=Value;
+  if (RelativeToAbsolute(Value) > LastRead.HighRead) or
+     (LastRead.HighRead > GetHighest)
+  then
+   LastRead.HighRead:=RelativeToAbsolute(Value);
   LastRead.NameCrc:=UserNumber;
-  LastRead.LastRead:=Value;
+  LastRead.LastRead:=RelativeToAbsolute(Value);
 
   LastReadLink^.Seek(LastReadLink^.GetSize);
 
@@ -1284,6 +1288,48 @@ procedure TJamMessageBase.ResetAll;
   DataLink^.Reset;
   HeaderLink^.Reset;
   LastReadLink^.Reset;
+ end;
+
+procedure TJamMessageBase.InitRelativeTable;
+ var
+  HighestMsgNum, I: Longint;
+  AJamIndex: TJamIndex;
+ begin
+  IndexLink^.Seek(0);
+
+  HighestMsgNum:=GetHighest;
+
+  New(RelativeTable, Init(Min(JamBaseHeader.ActiveMsgs, MaxMessages), 1));
+
+  for I:=JamBaseHeader.BaseMsgNum to HighestMsgNum do
+   begin
+    IndexLink^.Read(AJamIndex, SizeOf(AJamIndex));
+
+    if AJamIndex.HdrLoc <> -1 then
+     begin
+      if RelativeTable^.Count = MaxMessages then
+       RelativeTable^.AtDelete(0);
+
+      RelativeTable^.Insert(Pointer(I));
+     end;
+   end;
+ end;
+
+function TJamMessageBase.AbsoluteToRelative(Message: Longint): Longint;
+ begin
+  AbsoluteToRelative:=RelativeTable^.IndexOf(Pointer(Message)) + 1;
+ end;
+
+function TJamMessageBase.RelativeToAbsolute(Message: Longint): Longint;
+ begin
+  if not Exists(Message) then
+   begin
+    RelativeToAbsolute:=0;
+
+    Exit;
+   end;
+
+  RelativeToAbsolute:=Longint(RelativeTable^.At(Message - 1));
  end;
 
 end.

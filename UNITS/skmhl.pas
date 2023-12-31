@@ -356,7 +356,7 @@ procedure TMessageBase.Close;
 
 function TMessageBase.Exists(Message: Longint): Boolean;
  begin
-  Abstract;
+  Exists:=(Message > 0) and (Message <= GetCount);
  end;
 
 function TMessageBase.Current: Longint;

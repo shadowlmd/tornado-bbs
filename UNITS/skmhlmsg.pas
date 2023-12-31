@@ -25,7 +25,6 @@ type
   function Create(const Path: String): Boolean; virtual;
   function Exist(const Path: String): Boolean; virtual;
   procedure Close; virtual;
-  function Exists(Message: Longint): Boolean; virtual;
   procedure SeekNext; virtual;
   procedure SeekPrev; virtual;
   function GetLocation: Longint; virtual;
@@ -139,11 +138,11 @@ function TFidoMessageBase.Open(const Path: String): Boolean;
     Exit;
    end;
 
-  InitRelativeTable;
-
   Open:=True;
 
   SetOpened(True);
+
+  InitRelativeTable;
  end;
 
 function TFidoMessageBase.Create(const Path: String): Boolean;
@@ -164,11 +163,11 @@ function TFidoMessageBase.Create(const Path: String): Boolean;
   if not CreateDirectory(GetBasePath) then
    Exit;
 
-  New(RelativeTable, Init(1, 1));
-
   Create:=True;
 
   SetOpened(True);
+
+  New(RelativeTable, Init(1, 1));
  end;
 
 function TFidoMessageBase.Exist(const Path: String): Boolean;
@@ -186,12 +185,8 @@ procedure TFidoMessageBase.Close;
   SetOpened(False);
 
   Dispose(RelativeTable, Done);
-  RelativeTable:=nil;
- end;
 
-function TFidoMessageBase.Exists(Message: Longint): Boolean;
- begin
-  Exists:=(Message > 0) and (Message <= GetCount);
+  RelativeTable:=nil;
  end;
 
 procedure TFidoMessageBase.SeekNext;
@@ -816,9 +811,10 @@ function TFidoMessageBase.AbsoluteToRelative(Message: Longint): Longint;
 
 function TFidoMessageBase.RelativeToAbsolute(Message: Longint): Longint;
  begin
-  if (Message < 1) or (Message > GetCount) then
+  if not Exists(Message) then
    begin
     RelativeToAbsolute:=0;
+
     Exit;
    end;
 

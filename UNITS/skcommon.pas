@@ -199,8 +199,10 @@ const
 { The following constants are defining the size of a temporary buffers which
   will be created while working. }
 {$IFDEF RealMode}
+ MaxMessages    = 1000;
  MaxLineSize    : Longint = $1000;
 {$ELSE}
+ MaxMessages    = MaxCollectionSize - 100;
  MaxLineSize    : Longint = $4000;
 {$ENDIF}
  MaxMessageSize : Longint = $10000;
@@ -372,6 +374,7 @@ procedure StrToWord(const S: String; var I: Word);
 function StrToNumber(const S: String): Boolean;
 function ExtractWord(N: Byte; const S: String; WordDelims: TCharSet): String;
 function CharRPos(C: Char; const S: String): Byte;
+function Min(A, B: Longint): Longint;
 
 procedure ToASCIIZ(const Source: String; const Destination: Pointer);
 function FromASCIIZ(const Source: Pointer): String;
@@ -763,6 +766,14 @@ function CharRPos(C: Char; const S: String): Byte;
      Exit;
     end;
   CharRPos:=0;
+ end;
+
+function Min(A, B: Longint): Longint;
+ begin
+  if A > B then
+   Min:=B
+  else
+   Min:=A;
  end;
 
 procedure ToASCIIZ(const Source: String; const Destination: Pointer);
