@@ -93,8 +93,6 @@ type
   function Create(const Path: String): Boolean; virtual;
   function Exist(const Path: String): Boolean; virtual;
   procedure Close; virtual;
-  function GetLocation: Longint; virtual;
-  procedure SetLocation(Location: Longint); virtual;
   function OpenMessage: Boolean; virtual;
   function OpenMessageHeader: Boolean; virtual;
   function CloseMessage: Boolean; virtual;
@@ -460,16 +458,6 @@ procedure TJamMessageBase.Close;
   RelativeTable:=nil;
 
   SetOpened(False);
- end;
-
-function TJamMessageBase.GetLocation: Longint;
- begin
-  GetLocation:=Current;
- end;
-
-procedure TJamMessageBase.SetLocation(Location: Longint);
- begin
-  SetCurrent(Location);
  end;
 
 function TJamMessageBase.OpenMessage: Boolean;

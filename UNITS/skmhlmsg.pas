@@ -24,8 +24,6 @@ type
   function Create(const Path: String): Boolean; virtual;
   function Exist(const Path: String): Boolean; virtual;
   procedure Close; virtual;
-  function GetLocation: Longint; virtual;
-  procedure SetLocation(Location: Longint); virtual;
   function OpenMessage: Boolean; virtual;
   function OpenMessageHeader: Boolean; virtual;
   function CloseMessage: Boolean; virtual;
@@ -179,16 +177,6 @@ procedure TFidoMessageBase.Close;
   Dispose(RelativeTable, Done);
 
   RelativeTable:=nil;
- end;
-
-function TFidoMessageBase.GetLocation: Longint;
- begin
-  GetLocation:=Current;
- end;
-
-procedure TFidoMessageBase.SetLocation(Location: Longint);
- begin
-  SetCurrent(Location);
  end;
 
 function TFidoMessageBase.OpenMessage: Boolean;

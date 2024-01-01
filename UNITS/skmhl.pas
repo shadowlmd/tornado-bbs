@@ -416,12 +416,12 @@ function TMessageBase.SeekFound: Boolean;
 
 function TMessageBase.GetLocation: Longint;
  begin
-  Abstract;
+  GetLocation:=Current;
  end;
 
 procedure TMessageBase.SetLocation(Location: Longint);
  begin
-  Abstract;
+  SetCurrent(Location);
  end;
 
 function TMessageBase.OpenMessage: Boolean;
