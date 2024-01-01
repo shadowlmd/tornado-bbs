@@ -12,7 +12,6 @@ unit skMHLjam;
 
 interface
 uses
- tGlob,
  skMHL,
  skCommon;
 
@@ -100,7 +99,6 @@ type
   function OpenMessageHeader: Boolean; virtual;
   function CloseMessage: Boolean; virtual;
   function GetHighest: Longint; virtual;
-  function GetCount: Longint; virtual;
   function GetFrom: String; virtual;
   function GetTo: String; virtual;
   function GetSubject: String; virtual;
@@ -151,15 +149,12 @@ type
   HeaderLink: PMessageBaseStream;
   IndexLink: PMessageBaseStream;
   DataLink: PMessageBaseStream;
-  RelativeTable: PSortedLongintCollection;
   function GetSubField(const Number: Longint; var ID: Longint; var S: String): Boolean;
   procedure AddSubField(const ID: Longint; const S: String);
   function MapAttribute(var Attribute: Longint): Boolean;
   function StrCrc32(const S: String): Longint;
   procedure ResetAll;
   procedure InitRelativeTable; virtual;
-  function AbsoluteToRelative(Message: Longint): Longint; virtual;
-  function RelativeToAbsolute(Message: Longint): Longint; virtual;
  end;
 
 implementation
@@ -741,11 +736,6 @@ function TJamMessageBase.GetHighest: Longint;
   GetHighest:=IndexLink^.GetSize div SizeOf(TJamIndex) + JamBaseHeader.BaseMsgNum - 1;
  end;
 
-function TJamMessageBase.GetCount: Longint;
- begin
-  GetCount:=RelativeTable^.Count;
- end;
-
 function TJamMessageBase.GetFrom: String;
  begin
   GetFrom:=JamInfo.SourceName;
@@ -1114,7 +1104,7 @@ procedure TJamMessageBase.SetLastRead(const UserNumber: Longint; const Value: Lo
       LastRead.LastRead:=RelativeToAbsolute(Value);
 
       if (RelativeToAbsolute(Value) > LastRead.HighRead) or
-         (LastRead.HighRead > GetHighest)
+         (LastRead.HighRead > RelativeToAbsolute(GetCount))
       then
        LastRead.HighRead:=RelativeToAbsolute(Value);
 
@@ -1130,7 +1120,7 @@ procedure TJamMessageBase.SetLastRead(const UserNumber: Longint; const Value: Lo
 
   LastRead.UserNumber:=UserNumber;
   if (RelativeToAbsolute(Value) > LastRead.HighRead) or
-     (LastRead.HighRead > GetHighest)
+     (LastRead.HighRead > RelativeToAbsolute(GetCount))
   then
    LastRead.HighRead:=RelativeToAbsolute(Value);
   LastRead.NameCrc:=UserNumber;
@@ -1313,23 +1303,6 @@ procedure TJamMessageBase.InitRelativeTable;
       RelativeTable^.Insert(Pointer(I));
      end;
    end;
- end;
-
-function TJamMessageBase.AbsoluteToRelative(Message: Longint): Longint;
- begin
-  AbsoluteToRelative:=RelativeTable^.IndexOf(Pointer(Message)) + 1;
- end;
-
-function TJamMessageBase.RelativeToAbsolute(Message: Longint): Longint;
- begin
-  if not Exists(Message) then
-   begin
-    RelativeToAbsolute:=0;
-
-    Exit;
-   end;
-
-  RelativeToAbsolute:=Longint(RelativeTable^.At(Message - 1));
  end;
 
 end.

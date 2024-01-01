@@ -213,6 +213,7 @@ unit skMHL;
 
 interface
 uses
+ tGlob,
  skCommon;
 
 type
@@ -300,8 +301,11 @@ type
   function GetBasePath: String; virtual;
   function GetRead: Boolean; virtual;
   procedure SetRead(const Value: Boolean); virtual;
+  function AbsoluteToRelative(Message: Longint): Longint; virtual;
+  function RelativeToAbsolute(Message: Longint): Longint; virtual;
  public
   KludgeStart, KludgeEnd: Longint;
+  RelativeTable: PSortedLongintCollection;
  private
   Status: Longint;
   Opened: Boolean;
@@ -437,12 +441,12 @@ function TMessageBase.CloseMessage: Boolean;
 
 function TMessageBase.GetHighest: Longint;
  begin
-  Abstract;
+  GetHighest:=RelativeToAbsolute(GetCount);
  end;
 
 function TMessageBase.GetCount: Longint;
  begin
-  Abstract;
+  GetCount:=RelativeTable^.Count;
  end;
 
 function TMessageBase.GetFrom: String;
@@ -1157,6 +1161,23 @@ function TMessageBase.GetRead: Boolean;
 
 procedure TMessageBase.SetRead(const Value: Boolean);
  begin
+ end;
+
+function TMessageBase.AbsoluteToRelative(Message: Longint): Longint;
+ begin
+  AbsoluteToRelative:=RelativeTable^.IndexOf(Pointer(Message)) + 1;
+ end;
+
+function TMessageBase.RelativeToAbsolute(Message: Longint): Longint;
+ begin
+  if not Exists(Message) then
+   begin
+    RelativeToAbsolute:=0;
+
+    Exit;
+   end;
+
+  RelativeToAbsolute:=Longint(RelativeTable^.At(Message - 1));
  end;
 
 {* Stuff *}

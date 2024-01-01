@@ -12,7 +12,6 @@ unit skMHLmsg;
 
 interface
 uses
- tGlob,
  skMHL,
  skCommon;
 
@@ -25,15 +24,11 @@ type
   function Create(const Path: String): Boolean; virtual;
   function Exist(const Path: String): Boolean; virtual;
   procedure Close; virtual;
-  procedure SeekNext; virtual;
-  procedure SeekPrev; virtual;
   function GetLocation: Longint; virtual;
   procedure SetLocation(Location: Longint); virtual;
   function OpenMessage: Boolean; virtual;
   function OpenMessageHeader: Boolean; virtual;
   function CloseMessage: Boolean; virtual;
-  function GetHighest: Longint; virtual;
-  function GetCount: Longint; virtual;
   function GetFrom: String; virtual;
   function GetTo: String; virtual;
   function GetSubject: String; virtual;
@@ -70,11 +65,8 @@ type
  private
   Link: PMessageBaseStream;
   Header: TFidoHeader;
-  RelativeTable: PSortedLongintCollection;
   function MapAttribute(var Attribute: Longint): Boolean;
   procedure InitRelativeTable; virtual;
-  function AbsoluteToRelative(Message: Longint): Longint; virtual;
-  function RelativeToAbsolute(Message: Longint): Longint; virtual;
  end;
 
 implementation
@@ -189,28 +181,6 @@ procedure TFidoMessageBase.Close;
   RelativeTable:=nil;
  end;
 
-procedure TFidoMessageBase.SeekNext;
- begin
-  if Current < 0 then
-   SetCurrent(0);
-
-  if Current < GetCount then
-   SetCurrent(Current + 1)
-  else
-   SetCurrent(0);
- end;
-
-procedure TFidoMessageBase.SeekPrev;
- begin
-  if Current > GetCount then
-   SetCurrent(GetCount);
-
-  if Current > 1 then
-   SetCurrent(Current - 1)
-  else
-   SetCurrent(0);
- end;
-
 function TFidoMessageBase.GetLocation: Longint;
  begin
   GetLocation:=Current;
@@ -297,16 +267,6 @@ function TFidoMessageBase.CloseMessage: Boolean;
   Link:=nil;
 
   CloseMessage:=True;
- end;
-
-function TFidoMessageBase.GetHighest: Longint;
- begin
-  GetHighest:=RelativeToAbsolute(GetCount);
- end;
-
-function TFidoMessageBase.GetCount: Longint;
- begin
-  GetCount:=RelativeTable^.Count;
  end;
 
 function TFidoMessageBase.GetFrom: String;
@@ -796,29 +756,17 @@ procedure TFidoMessageBase.InitRelativeTable;
     Val(Copy(Find^.iName, 1, Pos('.', Find^.iName) - 1), Num, Code);
 
     if (Code = 0) and (Num > 0) then
+     begin
+      if RelativeTable^.Count = MaxMessages then
+       RelativeTable^.AtDelete(0);
+
       RelativeTable^.Insert(Pointer(Num));
+     end;
    until not Find^.NextSearch;
 
   Find^.StopSearch;
 
   Dispose(Find, Done);
- end;
-
-function TFidoMessageBase.AbsoluteToRelative(Message: Longint): Longint;
- begin
-  AbsoluteToRelative:=RelativeTable^.IndexOf(Pointer(Message)) + 1;
- end;
-
-function TFidoMessageBase.RelativeToAbsolute(Message: Longint): Longint;
- begin
-  if not Exists(Message) then
-   begin
-    RelativeToAbsolute:=0;
-
-    Exit;
-   end;
-
-  RelativeToAbsolute:=Longint(RelativeTable^.At(Message - 1));
  end;
 
 end.

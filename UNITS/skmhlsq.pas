@@ -17,7 +17,6 @@ unit skMHLsq;
 
 interface
 uses
- tGlob,
  skMHL,
  skCommon;
 
@@ -71,8 +70,6 @@ type
   function OpenMessage: Boolean; virtual;
   function OpenMessageHeader: Boolean; virtual;
   function CloseMessage: Boolean; virtual;
-  function GetHighest: Longint; virtual;
-  function GetCount: Longint; virtual;
   function GetFrom: String; virtual;
   function GetTo: String; virtual;
   function GetSubject: String; virtual;
@@ -116,7 +113,6 @@ type
   SquishIndexPos: Longint;
   DataLink: PMessageBaseStream;
   IndexLink: PMessageBaseStream;
-  RelativeTable: PSortedLongintCollection;
   procedure GetIndex(const Pos: Longint; var Index: TSquishIndex);
   procedure SetIndex(const Pos: Longint; var Index: TSquishIndex);
   function CheckIndex(const Message: Longint; var Index: TSquishIndex; var IndexPos: Longint; const Nearest: Boolean): Boolean;
@@ -131,8 +127,6 @@ type
   procedure LinkUpdate(var Frame: TSquishFrame; var FirstFrame, LastFrame: Longint; const FramePosition: Longint);
   procedure UnlinkFrame(var Frame: TSquishFrame; var FirstFrame, LastFrame: Longint);
   procedure InitRelativeTable; virtual;
-  function AbsoluteToRelative(Message: Longint): Longint; virtual;
-  function RelativeToAbsolute(Message: Longint): Longint; virtual;
  end;
 
 implementation
@@ -633,16 +627,6 @@ function TSquishMessageBase.CloseMessage: Boolean;
    end;
  end;
 
-function TSquishMessageBase.GetHighest: Longint;
- begin
-  GetHighest:=RelativeToAbsolute(GetCount);
- end;
-
-function TSquishMessageBase.GetCount: Longint;
- begin
-  GetCount:=SquishBaseHeader.NumMsg;
- end;
-
 function TSquishMessageBase.GetFrom: String;
  begin
   GetFrom:=FromASCIIZ(@SquishMessageHeader.MsgFrom);
@@ -943,9 +927,9 @@ function TSquishMessageBase.CreateNewMessage: Boolean;
   FillChar(SquishFrame, SizeOf(SquishFrame), 0);
   FillChar(SquishIndex, SizeOf(SquishIndex), 0);
 
-  RelativeTable^.Insert(Pointer(SquishBaseHeader.UID));
-
   SquishMessageHeader.UID:=SquishBaseHeader.UID;
+
+  RelativeTable^.Insert(Pointer(SquishMessageHeader.UID));
 
   Inc(SquishBaseHeader.UID);
 
@@ -1395,11 +1379,17 @@ procedure TSquishMessageBase.InitRelativeTable;
   Countdown: Longint;
   Index: TSquishIndex;
  begin
-  IndexLink^.Seek(0);
-
   Countdown:=IndexLink^.GetSize div SizeOf(TSquishIndex);
 
-  New(RelativeTable, Init(GetCount, 1));
+  if Countdown > MaxMessages then
+   begin
+    IndexLink^.Seek((Countdown - MaxMessages) * SizeOf(TSquishIndex));
+
+    Countdown := MaxMessages;
+   end else
+    IndexLink^.Seek(0);
+
+  New(RelativeTable, Init(Countdown, 1));
 
   while Countdown <> 0 do
    begin
@@ -1407,23 +1397,6 @@ procedure TSquishMessageBase.InitRelativeTable;
     RelativeTable^.Insert(Pointer(Index.Number));
     Dec(Countdown);
    end;
- end;
-
-function TSquishMessageBase.AbsoluteToRelative(Message: Longint): Longint;
- begin
-  AbsoluteToRelative:=RelativeTable^.IndexOf(Pointer(Message)) + 1;
- end;
-
-function TSquishMessageBase.RelativeToAbsolute(Message: Longint): Longint;
- begin
-  if not Exists(Message) then
-   begin
-    RelativeToAbsolute:=0;
-
-    Exit;
-   end;
-
-  RelativeToAbsolute:=Longint(RelativeTable^.At(Message - 1));
  end;
 
 end.
