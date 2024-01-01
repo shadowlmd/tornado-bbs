@@ -1394,7 +1394,9 @@ procedure TSquishMessageBase.InitRelativeTable;
   while Countdown <> 0 do
    begin
     IndexLink^.Read(Index, SizeOf(Index));
+
     RelativeTable^.Insert(Pointer(Index.Number));
+
     Dec(Countdown);
    end;
  end;
