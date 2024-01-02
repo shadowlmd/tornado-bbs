@@ -519,14 +519,14 @@ Begin
 
             If StrLen (LineBuf) = 0 Then
             Begin
-              S1 := 'ã';
+              S1 := #227;
               DAT^. Out (S1 [1], 1);
               Inc (MsgTxtPos);
             End Else
               While StrLen (LineBuf) <> 0 Do
               Begin
                 S1 := PlaceSubStr (TrimTrail (SplitStringPChar (LineBuf, 78,
-                  False)), 'ã', 'y') + 'ã';
+                  False)), #227, 'y') + #227;
                 Len := Length (S1);
                 DAT^. Out (S1 [1], Len);
                 Inc (MsgTxtPos, Len);
@@ -776,7 +776,7 @@ Begin
             Read (F, Block);
 
             For j := 1 To 128 Do
-              If Block [j] <> 'ã' Then
+              If Block [j] <> #227 Then
                 S := S + Block [j]
               Else
               Begin
