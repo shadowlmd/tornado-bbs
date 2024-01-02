@@ -854,9 +854,9 @@ Begin
       MsgText^. InsLine ('')
     Else
     Begin
-      MsgText^. InsLine (TrimTrail (SplitStringPChar (LineBuf, 79, True)));
+      MsgText^. InsLine (TrimTrail (SplitStringPChar (LineBuf, 78, True)));
       While StrLen (LineBuf) <> 0 Do
-        MsgText^. InsLine (Trim (SplitStringPChar (LineBuf, 79, True)));
+        MsgText^. InsLine (Trim (SplitStringPChar (LineBuf, 78, True)));
     End;
   End;
 
@@ -1016,7 +1016,7 @@ Begin
                    If R. HotKeys Then
                      ComWriteLn ('', 0);
                    Message (lang (laSecurityLow));
-                   Goto ReSelect;
+                   Continue;
                  End;
 
                  If Not R. Frames Or (R. Emu = teTty) Then

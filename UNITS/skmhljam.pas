@@ -1270,7 +1270,7 @@ procedure TJamMessageBase.ResetAll;
 
 procedure TJamMessageBase.InitRelativeTable;
  var
-  HighestMsgNum, I: Longint;
+  HighestMsgNum, RelMsgNum, Delta, I: Longint;
   AJamIndex: TJamIndex;
  begin
   IndexLink^.Seek(0);
@@ -1279,16 +1279,19 @@ procedure TJamMessageBase.InitRelativeTable;
 
   New(RelativeTable, Init(Min(JamBaseHeader.ActiveMsgs, MaxMessages), 1));
 
+  RelMsgNum:=0;
+  Delta:=JamBaseHeader.ActiveMsgs - MaxMessages;
+
   for I:=JamBaseHeader.BaseMsgNum to HighestMsgNum do
    begin
     IndexLink^.Read(AJamIndex, SizeOf(AJamIndex));
 
     if AJamIndex.HdrLoc <> -1 then
      begin
-      if RelativeTable^.Count = MaxMessages then
-       RelativeTable^.AtDelete(0);
+      Inc(RelMsgNum);
 
-      RelativeTable^.Insert(Pointer(I));
+      if RelMsgNum > Delta then
+       RelativeTable^.Insert(Pointer(I));
      end;
    end;
  end;
