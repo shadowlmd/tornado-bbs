@@ -984,13 +984,9 @@ Begin
     Begin
       ShowCurrentMsg (PauseAfterEach);
 
-      ComWriteLn ('', 0);
-      If Not PauseAfterEach And Not More Then
-        Break;
-
       If Not PauseAfterEach Then
       Begin
-        If DrawAborted Then
+        If Not More Or DrawAborted Then
           Break;
       End Else
       Begin
