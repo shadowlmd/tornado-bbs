@@ -239,7 +239,8 @@ Type
  tMsgHead = Record
    MsgNum, NumOfMsgs : LongInt;
    FromAddr, ToAddr  : TAddress;
-   IsPriv, IsRcvd    : Boolean;
+   IsPriv, IsRcvd,
+   IsSent            : Boolean;
    MsgDateMBDT       : TMessageBaseDateTime;
    MsgDate           : DateTime;
    MsgFrom, MsgTo,

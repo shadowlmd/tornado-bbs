@@ -737,6 +737,7 @@ Begin
   H^. MsgSubj := Trim (PlaceSubStr (PlaceSubStr (Msg^. GetSubject, #10, ' '), #13, ''));
   H^. IsPriv := Msg^. GetAttribute (maPrivate);
   H^. IsRcvd := Msg^. GetAttribute (maReceived);
+  H^. IsSent := Msg^. GetAttribute (maSent);
   H^. MsgNum := Msg^. Current;
   H^. NumOfMsgs := Msg^. GetCount;
 
@@ -776,10 +777,12 @@ Begin
   End;
 
   S := Long2Str (H^. MsgNum) + '/' + Long2Str (H^. NumOfMsgs);
-  If H^. IsPriv Then
-    S := S + ' (Priv)';
   If H^. IsRcvd Then
-    S := S + ' (Rcvd)';
+    S := S + ' (Rcv)';
+  If H^. IsSent Then
+    S := S + ' (Snt)';
+  If H^. IsPriv Then
+    S := S + ' (Pvt)';
   ComWriteLn (lang (laMsgNum) + Pad (S, UserNameLen) + FormattedDate (
     H^. MsgDate, 'DD NNN YYYY HH:II'), eoMacro + eoCodes);
   If Not (Pause Or More) Then
@@ -1009,9 +1012,11 @@ Begin
 
            2 : Begin                                               {Delete}
                  If ((H^. MsgFrom <> R. Name) Or
-                     (AddressCompare(H^. FromAddr, MsgArea. Address) <> 0)) And
-                    (MsgArea. SysOpSec > R. Security) Or
-                    Not FlagsValid (R. Flags, MsgArea. SysOpFlags) Then
+                     (AddressCompare(H^. FromAddr, MsgArea. Address) <> 0) Or
+                     ((MsgArea. AreaType = btEchomail) And
+                      (H^. IsSent Or H^. IsRcvd))) And
+                    ((MsgArea. SysOpSec > R. Security) Or
+                     Not FlagsValid (R. Flags, MsgArea. SysOpFlags)) Then
                  Begin
                    If R. HotKeys Then
                      ComWriteLn ('', 0);
