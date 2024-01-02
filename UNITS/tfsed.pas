@@ -226,7 +226,7 @@ Var
   Begin
     If StrLen (LineBuf) <> 0 Then
     Begin
-      S := SplitStringPChar (LineBuf, 255);
+      S := SplitStringPChar (LineBuf, 255, True);
       GetStr := True;
       Exit;
     End;
@@ -234,7 +234,7 @@ Var
     While Not Msg^. EndOfMessage Do
     Begin
       Msg^. GetStringPChar (LineBuf, MaxLineSize);
-      S := SplitStringPChar (LineBuf, 255);
+      S := SplitStringPChar (LineBuf, 255, True);
 
       If S <> '' Then
         If (S [1] = #1) Or
@@ -244,7 +244,6 @@ Var
         Then
           Continue;
 
-      S := TrimTrail (PlaceSubStr (S, #9, ReplaceTabSpaces));
       GetStr := True;
       Exit;
     End;

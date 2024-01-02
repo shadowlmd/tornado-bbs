@@ -242,7 +242,7 @@ Function AsciiPos (S, SubStr: String; Quote: Char): Byte;
   { Finds SubStr in S, except quoted parts }
 
 Function SplitString (Var S: String; Len: Byte): String;
-Function SplitStringPChar (Var Buf: PChar; Len: Byte): String;
+Function SplitStringPChar (Var Buf: PChar; Len: Byte; ReplaceTabs: Boolean): String;
 Function WordInString (Const W, S: String): Boolean;
 Procedure Str2Set (Const S: String; Var CS: CharSet);
 
@@ -2807,9 +2807,9 @@ Begin
   End;
 End;
 
-Function SplitStringPChar (Var Buf: PChar; Len: Byte): String;
+Function SplitStringPChar (Var Buf: PChar; Len: Byte; ReplaceTabs: Boolean): String;
 Var
-  WC     : Integer;
+  I, N   : Integer;
   W      : String;
   Tmp    : Array [0..255] Of Char;
 {$IFNDEF VirtualPascal}
@@ -2823,29 +2823,55 @@ Begin
     Exit;
   End;
 
-  If StrLen (Buf) <= Len Then
+  Result := StrPas (StrLCopy (@Tmp, Buf, Len));
+
+  If ReplaceTabs Then
   Begin
-    SplitStringPChar := StrPas (Buf);
-    StrCopy (Buf, '');
-  End Else
-  Begin
-    Result := StrPas (StrLCopy (@Tmp, Buf, Len));
-    If (Result [Len] <> ' ') And (Buf [Len] <> ' ') Then
-    Begin
-      WC := WordCount (Result, SpaceOnly);
-      If WC > 1 Then
+    I := 1;
+    N := Length (Result) + Length (ReplaceTabSpaces) - 1;
+
+    Repeat
+      If Result [I] = #9 Then
       Begin
-        W := ExtractWord (WC, Result, SpaceOnly);
-        SetLength (Result, Len - Length (W));
+        If N > Len Then
+          SetLength(Result, Length (Result) - Length (ReplaceTabSpaces) + 1)
+        Else
+          Inc(N, N + Length (ReplaceTabSpaces) - 1);
       End;
-    End;
 
-    StrCopy (Buf, Buf + Length (Result));
-
-  {$IFNDEF VirtualPascal}
-    SplitStringPChar := Result;
-  {$ENDIF}
+      Inc (I);
+    Until I > Length (Result);
   End;
+
+  N := Length (Result);
+
+  If (Result [N] <> ' ') And (StrLen (Buf) > N) And
+     (Buf [N] <> ' ') Then
+  Begin
+    I := WordCount (Result, SpaceOnly);
+    If I > 1 Then
+    Begin
+      W := ExtractWord (I, Result, SpaceOnly);
+      SetLength (Result, N - Length (W));
+    End;
+  End;
+
+  N := Length (Result);
+
+  If N < 1 Then
+    N := Len;
+
+  If StrLen (Buf) > N Then
+    StrCopy (Buf, Buf + N)
+  Else
+    StrCopy (Buf, '');
+
+  If ReplaceTabs Then
+    Result := PlaceSubStr (Result, #9, ReplaceTabSpaces);
+
+{$IFNDEF VirtualPascal}
+  SplitStringPChar := Result;
+{$ENDIF}
 End;
 
 Function DelSpaces (Const S: String): String;

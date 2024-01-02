@@ -854,9 +854,9 @@ Begin
       MsgText^. InsLine ('')
     Else
     Begin
-      MsgText^. InsLine (TrimTrail (PlaceSubStr (SplitStringPChar (LineBuf, 79), #9, ReplaceTabSpaces)));
+      MsgText^. InsLine (TrimTrail (SplitStringPChar (LineBuf, 79, True)));
       While StrLen (LineBuf) <> 0 Do
-        MsgText^. InsLine (Trim (PlaceSubStr (SplitStringPChar (LineBuf, 79), #9, ReplaceTabSpaces)));
+        MsgText^. InsLine (Trim (SplitStringPChar (LineBuf, 79, True)));
     End;
   End;
 
@@ -1609,7 +1609,8 @@ Begin
               Continue;
 
             While StrLen (LineBuf) <> 0 Do
-              If TestMasks (Masks, MatchedMasks, SplitStringPChar (LineBuf, 255)) Then
+              If TestMasks (Masks, MatchedMasks,
+                SplitStringPChar (LineBuf, 255, False)) Then
               Begin
                 Match := True;
                 Break;
