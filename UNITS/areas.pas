@@ -857,7 +857,10 @@ Begin
       MsgText^. InsLine ('')
     Else
     Begin
-      MsgText^. InsLine (TrimTrail (SplitStringPChar (LineBuf, 79, True)));
+      S := TrimTrail (SplitStringPChar (LineBuf, 79, True));
+      If Copy (S, 1, 8) = 'SEEN-BY:' Then
+        Continue;
+      MsgText^. InsLine (S);
       While StrLen (LineBuf) <> 0 Do
         MsgText^. InsLine (Trim (SplitStringPChar (LineBuf, 79, True)));
     End;
