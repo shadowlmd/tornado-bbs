@@ -1544,7 +1544,7 @@ Begin
     begin
       ReadLn(FF, TempS);
       if UpString(Copy(Trim(TempS), 1, 4))='SORT' then
-       ChangeParam(TempS, SortTypeStr[L^.SortMethod]);
+        ChangeParam(TempS, SortTypeStr[L^.SortMethod]);
       WriteLn(TFF, TempS);
     end;
     Close(TFF);
