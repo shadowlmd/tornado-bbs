@@ -857,9 +857,9 @@ Begin
       MsgText^. InsLine ('')
     Else
     Begin
-      MsgText^. InsLine (TrimTrail (SplitStringPChar (LineBuf, 78, True)));
+      MsgText^. InsLine (TrimTrail (SplitStringPChar (LineBuf, 79, True)));
       While StrLen (LineBuf) <> 0 Do
-        MsgText^. InsLine (Trim (SplitStringPChar (LineBuf, 78, True)));
+        MsgText^. InsLine (Trim (SplitStringPChar (LineBuf, 79, True)));
     End;
   End;
 
