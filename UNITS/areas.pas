@@ -2055,6 +2055,7 @@ Begin
 
   If MsgArea. AreaType <> btLocal Then
     Add2EchoMail (MsgArea. BasePath);
+
   MakeFlag (MailFlag);
 
 EndOfProc:
