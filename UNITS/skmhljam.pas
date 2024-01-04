@@ -45,7 +45,6 @@ const
  jamaHold               = $00000080;
  jamaFRq                = $00001000;
  jamaRRq                = $00010000;
- jamaARq                = $00020000;
 
  jamaTypeLocal          = $00800000;
  jamaTypeEcho           = $01000000;
@@ -1239,7 +1238,6 @@ function TJamMessageBase.MapAttribute(var Attribute: Longint): Boolean;
    maHold: Attribute:=jamaHold;
    maFRq: Attribute:=jamaFRq;
    maRRq: Attribute:=jamaRRq;
-   maARq: Attribute:=jamaARq;
   else
    MapAttribute:=(Attribute = jamaTypeLocal) or
                  (Attribute = jamaTypeEcho) or
