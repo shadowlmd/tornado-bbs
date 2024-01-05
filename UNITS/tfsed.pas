@@ -69,11 +69,6 @@ Const
   kbCtrlY        = #25;
 
   EditWordDelims = [' '];
-  QuoteChar      = '>';
-
-  MaxQuotePos    = 6;
-  MaxQuoteLen    = 70;
-  QuoteMargin    = 75;
 
 Var
   MaxStrLen, OldAttr : Integer;

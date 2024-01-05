@@ -113,8 +113,6 @@ Const
   ml_ToLen         = 24;
   ml_SubjLen       = 25;
 
-  MaxQuotePos      = 7;
-
   EditorBottomLine = 23;
 
 Var
@@ -715,11 +713,11 @@ End;
 Procedure ShowCurrentMsg (Pause: Boolean);
 
 Var
-  PS           : PString;
-  i, P, Q      : Integer;
-  Color        : Byte;
-  Secured      : Boolean;
-  S            : String;
+  PS      : PString;
+  i       : Integer;
+  Color   : Byte;
+  Secured : Boolean;
+  S       : String;
 
 Begin
   If HotKeysStr <> '' Then
@@ -850,6 +848,7 @@ Begin
   While Not Msg^. EndOfMessage Do
   Begin
     Msg^. GetStringPChar (LineBuf, MaxLineSize);
+
     If LineBuf[0] = #1 Then
       Continue;
 
@@ -858,11 +857,20 @@ Begin
     Else
     Begin
       S := TrimTrail (SplitStringPChar (LineBuf, 79, True));
+
       If Copy (S, 1, 8) = 'SEEN-BY:' Then
         Continue;
+
       MsgText^. InsLine (S);
-      While StrLen (LineBuf) <> 0 Do
-        MsgText^. InsLine (Trim (SplitStringPChar (LineBuf, 79, True)));
+
+      If StrLen (LineBuf) <> 0 Then
+      Begin
+        S := GetQuote (S);
+        i := 79 - Length (S);
+
+        While StrLen (LineBuf) <> 0 Do
+          MsgText^. InsLine (S + Trim (SplitStringPChar (LineBuf, i, True)));
+      End;
     End;
   End;
 
@@ -880,20 +888,15 @@ Begin
         Color := Cnf. ColorScheme [mrOrigin]
       Else
       Begin
-        P := Pos ('>', Copy (PS^, 1, MaxQuotePos));
-        If P > 0 Then
-        Begin
-          Q := P;
+        S := GetQuote (PS^);
 
-          Repeat
-            Inc (P);
-          Until (P > Length (PS^)) Or (PS^ [P] <> '>');
-
-          If Odd (P - Q) Then Color := Cnf. ColorScheme [mrQuote]
-                         Else Color := Cnf. ColorScheme [mrQuote2];
-        End
+        If Length (S) = 0 Then
+          Color := Cnf. ColorScheme [mrNormal]
         Else
-          Color := Cnf. ColorScheme [mrNormal];
+        If Odd (SymbolCount (S, QuoteChar)) Then
+          Color := Cnf. ColorScheme [mrQuote]
+        Else
+          Color := Cnf. ColorScheme [mrQuote2];
       End;
 
       ComWriteLn (EmuRelColor (Color) + PS^, eoDisable01);

@@ -104,6 +104,11 @@ Const
 
   ZeroOne       : Array [Boolean] Of Char = ('0', '1');
 
+  QuoteChar   = '>';
+  MaxQuotePos = 6;
+  MaxQuoteLen = 42;
+  QuoteMargin = 75;
+
 {$I INC\config.inc}
 
   {-------- Numeric conversion -----------}
@@ -396,6 +401,7 @@ Procedure Pause (Duration: LongInt);
 {$IFDEF MSDOS}
 Procedure tmDelay (Ms: System. Word);
 {$ENDIF}
+Function GetQuote (Const S: String): String;
 
 Implementation
 
@@ -3117,6 +3123,42 @@ End;
 
 {$IFDEF MSDOS}
 {$IFNDEF DPMI32}
+
+Function GetQuote (Const S: String): String;
+Var
+  I: Byte;
+  Tmp: String [MaxQuotePos];
+
+Begin
+  GetQuote := '';
+
+  I := Pos (QuoteChar, S);
+
+  If (I = 0) Or (I > MaxQuotePos) Then
+    Exit;
+
+  Tmp := TrimLead (Copy (S, 1, I - 1));
+
+  If (Pos (' ', Tmp) <> 0) Or Not ConsistsOf (Tmp, LettersOnly) Then
+    Exit;
+
+  While I <= MaxQuoteLen Do
+  Begin
+    Inc (I);
+
+    If (S [I] = ' ') Then
+    Begin
+      If S [I - 1] <> QuoteChar Then
+        Break;
+    End Else
+    If S [I] <> QuoteChar Then
+      Break;
+  End;
+
+  Dec (I);
+
+  GetQuote := Copy (S, 1, I);
+End;
 
 { The following part of code has been cut from
   Turbo Professional 5.21 (c) by TurboPower Software, 1987, 1992. }
