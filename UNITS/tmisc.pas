@@ -2867,7 +2867,7 @@ Begin
     StrCopy (Buf, '');
 
   If ReplaceTabs Then
-    Result := PlaceSubStr (Result, #9, ReplaceTabSpaces);
+    PlaceSubStrP (Result, #9, ReplaceTabSpaces);
 
 {$IFNDEF VirtualPascal}
   SplitStringPChar := Result;
