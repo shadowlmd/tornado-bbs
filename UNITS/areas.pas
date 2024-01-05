@@ -2010,10 +2010,8 @@ Begin
   If GetSysTZUTC (S) Then
     Msg^. SetKludge (#1'TZUTC:', #1'TZUTC: ' + S);
 
-  S := #1'PID: ' + NameVer;
   If Options And pfUpgrader <> 0 Then
-    S := S + ' upgrade manager';
-  Msg^. SetKludge (#1'PID:', S);
+    Msg^. SetKludge (#1'PID:', #1'PID: ' + NameVer + ' upgrade manager');
 
   Msg^. SetFrom (FromName);
   Msg^. SetTo (ToName);
