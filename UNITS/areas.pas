@@ -1031,7 +1031,7 @@ Begin
                  If Not R. Frames Or (R. Emu = teTty) Then
                    ComWriteLn ('', 0);
 
-                 If Query (lang (laDeleteMsg), True, ofFramed) Then
+                 If Query (lang (laDeleteMsg), False, ofFramed) Then
                  Begin
                    LogWrite ('+', sm (smlDeletingMsg) +
                      Long2Str (H^. MsgNum) + sm (smDelFromArea) +
