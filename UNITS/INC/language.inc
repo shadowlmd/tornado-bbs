@@ -66,9 +66,7 @@ smmUserHangUp               = 41;
 smmUserParam                = 42;
 smmUserChat                 = 43;
 smmServiceSub               = 44;
-{
-smmServiceGluck             = 45;
-}
+smlEditingMsg               = 45;
 smmServiceStatus            = 46;
 smmServiceShell             = 47;
 smmServiceManual            = 48;
@@ -111,7 +109,7 @@ smEnd                       = 84;
 smNewReg                    = 85;
 smOnLine                    = 86;
 smlDeletingMsg              = 87;
-smDelFromArea               = 88;
+smFromArea                  = 88;
 smAnswerInArea              = 89;
 smFileOpenErr               = 90;
 smTimeLeft                  = 91;
@@ -427,5 +425,6 @@ inetTelnetUnblResolve       = 400;
 inetTelnetUnblConnect       = 401;
 smParamChangeInfo           = 402;
 seWrongEndCount             = 403;
+smInArea                    = 404;
 
-Max_SM_Number               = 403;
+Max_SM_Number               = 404;

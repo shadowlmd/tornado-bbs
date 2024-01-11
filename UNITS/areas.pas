@@ -49,7 +49,7 @@ Uses
   tFSed;
 
 Type
-  tPostMode        = (pmNew, pmReply);
+  tPostMode        = (pmNew, pmReply, pmEdit);
   tFSearchMode     = (fsName, fsDate, fsDesc);
 
 Const
@@ -71,7 +71,7 @@ Procedure SelectMArea;
 
 Function  OpenMessageArea (ErrorReport, Make: Boolean): Boolean;
 
-Function  PostMsg (PostMode: tPostMode; ToUser, {eMail,} Subj: String; Const Tpl: String): Boolean;
+Function  PostMsg (PostMode: tPostMode; ToUser, Subj: String; Const Tpl: String): Boolean;
 Procedure PrePostMsg (Const Param, Tpl: String);
 Procedure Msg2SysOp (Const Subj, Tpl: String);
 
@@ -105,7 +105,6 @@ Uses
 Const
   UserNameLen      = 36;
   AddrLen          = 25;
-  {eMailLen         = 30;}
 
   ml_MaxNumbers    = 99;
   ml_NumLen        = 2;
@@ -332,12 +331,59 @@ Begin
   Until b;
 End;
 
+Procedure ReadMessageText (SkipTearlineAndOrigin: Boolean);
+Var
+  S: String [79];
+  i: Byte;
+
+Begin
+  Msg^. OpenMessage;
+  Msg^. SetTextPos (Msg^. AfterLastKludge);
+
+  While Not Msg^. EndOfMessage Do
+  Begin
+    Msg^. GetStringPChar (LineBuf, MaxLineSize);
+
+    If LineBuf[0] = #1 Then
+      Continue;
+
+    If StrLen (LineBuf) = 0 Then
+      MsgText^. InsLine ('')
+    Else
+    Begin
+      S := TrimTrail (SplitStringPChar (LineBuf, 79, True));
+
+      If Copy (S, 1, 8) = 'SEEN-BY:' Then
+        Continue;
+
+      If SkipTearlineAndOrigin And
+         ((S = '---') Or (Pos ('--- ', S) = 1) Or
+          (Pos (' * Origin: ', S) = 1))
+      Then
+        Continue;
+
+      MsgText^. InsLine (S);
+
+      If StrLen (LineBuf) <> 0 Then
+      Begin
+        S := GetQuote (S);
+        i := 79 - Length (S);
+
+        While StrLen (LineBuf) <> 0 Do
+          MsgText^. InsLine (S + Trim (SplitStringPChar (LineBuf, i, True)));
+      End;
+    End;
+  End;
+
+  Msg^. CloseMessage;
+End;
+
 Procedure EditLine (Var S: String); Far;
 Begin
   S := GetAnswer ('', 73, 0, S);
 End;
 
-Function PostMsg (PostMode: tPostMode; ToUser, {eMail,} Subj: String;
+Function PostMsg (PostMode: tPostMode; ToUser, Subj: String;
                   Const Tpl: String): Boolean;
 Var
   i, j, EditStartLine     : Integer;
@@ -510,7 +556,7 @@ Begin
     ComWrite (Pad (ToUser, UserNameLen), eoNoFlush);
   End
   Else
-    If Cnf. Aliases Then
+    If Cnf. Aliases And (MsgArea. AreaType = btLocal) Then
       If Is_User (ToUser, True) Then
       Begin
         GetUser (ToUser, UR, True);
@@ -523,8 +569,6 @@ Begin
       End;
 
   ComWrite ('  ', eoNoFlush);
-  {If eMail <> '' Then
-    ToUser := eMail;}
 
   WToAddr := '';
   If MsgArea. AreaType = btNetmail Then
@@ -539,19 +583,23 @@ Begin
       WToAddr := RelativeAddr (AddressToStrEx (H^. FromAddr), MsgArea. Address);
       ComWriteLn (WToAddr, 0);
     End Else
+    If PostMode = pmEdit Then
+    Begin
+      WToAddr := RelativeAddr (AddressToStrEx (H^. ToAddr), MsgArea. Address);
+      ComWriteLn (WToAddr, 0);
+    End Else
     Begin
       ComRead (WToAddr, AddrLen, ofAllowEmpty + ofSpaceAdd);
       ComWriteLn (EmuCursorLeft (AddrLen) +
         Pad (RelativeAddr (WToAddr, MsgArea. Address), AddrLen), 0);
     End;
-  End
-  Else
+  End Else
     ComWriteLn ('', 0);
 
   ComWrite (lang (laMsgSubj), eoMacro + eoCodes);
   i := 79 - WhereX;
 
-  If (PostMode = pmReply) Or (Subj <> '') Then
+  If (PostMode = pmReply) Or (PostMode = pmEdit) Or (Subj <> '') Then
     ComWriteLn (Copy (Subj, 1, i), 0)
   Else
     ComReadLn (Subj, i, ofAllowEmpty);
@@ -588,8 +636,27 @@ Begin
         Close (F);
       End;
     End;
-  End
-  Else
+  End Else
+  If PostMode = pmEdit Then
+  Begin
+    Assign (F, TmpTextName);
+    SetTextBuf (F, FileBuf, FileBufSize);
+    ReWrite (F);
+
+    If IOResult <> 0 Then
+      Exit;
+
+    MsgText^. FreeAll;
+
+    ReadMessageText (True);
+
+    For i := 0 To MsgText^. Count-1 Do
+      WriteLn(F, PString (MsgText^. At (i))^);
+
+    MsgText^. FreeAll;
+
+    Close (F);
+  End Else
     ProcessTemplate;
 
   If MsgArea. AreaType = btNetmail Then
@@ -680,9 +747,14 @@ Begin
       ToUser, Subj, H^. MSGID, H^. eMail, MsgArea. Address, DestAddr, Options);
 
     tDeleteFile (TmpTextName);
-    Inc (Sys. MsgsPosted);
-    Inc (R. MsgsPosted);
-    LogWrite ('@', 'To: ' + ToUser + ', Subj: ' + Subj);
+
+    If PostMode <> pmEdit Then
+    Begin
+      Inc (Sys. MsgsPosted);
+      Inc (R. MsgsPosted);
+      LogWrite ('@', 'To: ' + ToUser + ', Subj: ' + Subj);
+    End;
+
     PostMsg := True;
   End;
 End;
@@ -708,6 +780,14 @@ Begin
     DontShowMsg := AddressCompare(mFromAddr, MsgArea. Address) <> 0
   Else
     DontShowMsg := True;
+End;
+
+Function CannotModifyMsg: Boolean;
+Begin
+  CannotModifyMsg := (H^. IsRcvd Or H^. IsSent Or (H^. MsgFrom <> R. Name) Or
+                      (AddressCompare(H^. FromAddr, MsgArea. Address) <> 0)) And
+                     ((MsgArea. SysOpSec > R. Security) Or
+                      Not FlagsValid (R. Flags, MsgArea. SysOpFlags));
 End;
 
 Procedure ShowCurrentMsg (Pause: Boolean);
@@ -840,41 +920,9 @@ Begin
     Exit;
   End;
 
-  Msg^. OpenMessage;
-  Msg^. SetTextPos (Msg^.AfterLastKludge);
-
   MsgText^. FreeAll;
 
-  While Not Msg^. EndOfMessage Do
-  Begin
-    Msg^. GetStringPChar (LineBuf, MaxLineSize);
-
-    If LineBuf[0] = #1 Then
-      Continue;
-
-    If StrLen (LineBuf) = 0 Then
-      MsgText^. InsLine ('')
-    Else
-    Begin
-      S := TrimTrail (SplitStringPChar (LineBuf, 79, True));
-
-      If Copy (S, 1, 8) = 'SEEN-BY:' Then
-        Continue;
-
-      MsgText^. InsLine (S);
-
-      If StrLen (LineBuf) <> 0 Then
-      Begin
-        S := GetQuote (S);
-        i := 79 - Length (S);
-
-        While StrLen (LineBuf) <> 0 Do
-          MsgText^. InsLine (S + Trim (SplitStringPChar (LineBuf, i, True)));
-      End;
-    End;
-  End;
-
-  Msg^. CloseMessage;
+  ReadMessageText (False);
 
   For i := 0 To MsgText^. Count-1 Do
   Begin
@@ -882,8 +930,8 @@ Begin
 
     If Length (PS^) > 0 Then
     Begin
-      If (PS^ = '---') Or (Copy (PS^, 1, 4) = '--- ') Or
-         (Copy (PS^, 1, 11) = ' * Origin: ')
+      If (PS^ = '---') Or (Pos ('--- ', PS^) = 1) Or
+         (Pos (' * Origin: ', PS^) = 1)
       Then
         Color := Cnf. ColorScheme [mrOrigin]
       Else
@@ -934,9 +982,9 @@ End;
 
 Function ReplyToCurrMsg (Const Tpl: String): Boolean;
 Begin
-  If PostMsg (pmReply, H^. MsgFrom, {H^. eReplyTo,} H^. MsgSubj, Tpl) Then
+  LogWrite ('+', sm (smAnswerInArea) + ZeroMsg (MsgArea. Name, True));
+  If PostMsg (pmReply, H^. MsgFrom, H^. MsgSubj, Tpl) Then
   Begin
-    LogWrite ('+', sm (smAnswerInArea) + ZeroMsg (MsgArea. Name, True));
     ReplyToCurrMsg := True;
   End Else
     ReplyToCurrMsg := False;
@@ -1005,7 +1053,7 @@ Begin
         i := MenuBar (lang (laMsgString), Copy (lang (laMsgKeys), 1, 3) +
           #13 + Copy (lang (laMsgKeys), 4, 255));
 
-        If (Msg^. GetCount <= 0) And (i in [1..6, 8, 9]) Then
+        If (Msg^. GetCount < 1) And (i in [1..6, 8, 9, 11]) Then
         Begin
           ComWriteLn (#13#10 + lang (laNoMsgsInArea), eoMacro + eoCodes);
           Goto ReSelect;
@@ -1015,12 +1063,7 @@ Begin
            1 : Continue;                                            {Again}
 
            2 : Begin                                               {Delete}
-                 If ((H^. MsgFrom <> R. Name) Or
-                     (AddressCompare(H^. FromAddr, MsgArea. Address) <> 0) Or
-                     ((MsgArea. AreaType = btEchomail) And
-                      (H^. IsSent Or H^. IsRcvd))) And
-                    ((MsgArea. SysOpSec > R. Security) Or
-                     Not FlagsValid (R. Flags, MsgArea. SysOpFlags)) Then
+                 If CannotModifyMsg Then
                  Begin
                    If R. HotKeys Then
                      ComWriteLn ('', 0);
@@ -1034,7 +1077,7 @@ Begin
                  If Query (lang (laDeleteMsg), False, ofFramed) Then
                  Begin
                    LogWrite ('+', sm (smlDeletingMsg) +
-                     Long2Str (H^. MsgNum) + sm (smDelFromArea) +
+                     Long2Str (H^. MsgNum) + sm (smFromArea) +
                      ZeroMsg (MsgArea. Name, True));
 
                    Msg^. KillMessage;
@@ -1052,7 +1095,7 @@ Begin
 
         3, 4 : ;                                                     {Next}
 
-           5 : Begin                                                 {Last}
+           5 : Begin                                             {Previous}
                  Msg^. SeekPrev;
 
                  If Msg^. SeekFound Then
@@ -1082,7 +1125,7 @@ Begin
                End Else
                  Continue;
 
-           7 : If PostMsg (pmNew, '', {'',} '', 'menu') Then         {Post}
+           7 : If PostMsg (pmNew, '', '', 'menu') Then               {Post}
                Begin
                  LogWrite ('+', sm (smlPosting) + ZeroMsg (MsgArea. Name,
                    True));
@@ -1119,6 +1162,26 @@ Begin
                End;
 
           10 : Break;                                                {Stop}
+          11 : Begin                                               {Change}
+                 If CannotModifyMsg Then
+                 Begin
+                   If R. HotKeys Then
+                     ComWriteLn ('', 0);
+                   Message (lang (laSecurityLow));
+                   Continue;
+                 End;
+
+                 If Not R. Frames Or (R. Emu = teTty) Then
+                   ComWriteLn ('', 0);
+
+                 LogWrite ('+', sm (smlEditingMsg) +
+                   Long2Str (H^. MsgNum) + sm (smInArea) +
+                   ZeroMsg (MsgArea. Name, True));
+
+                 PostMsg (pmEdit, H^. MsgTo, H^. MsgSubj, 'menu');
+
+                 Continue;
+               End;
         End;
       End;
 
@@ -1861,8 +1924,7 @@ Begin
 
     If OpenMessageArea (True, True) Then
     Begin
-      {Msg^. GetMsgNumRelative;}
-      If PostMsg (pmNew, Cnf. SysOp, {'',} Subj, Tpl) Then
+      If PostMsg (pmNew, Cnf. SysOp, Subj, Tpl) Then
         LogWrite ('+', sm (smlPosting) + ZeroMsg (MsgArea. Name, True));
 
       CloseMessageBase (Msg);
@@ -1996,48 +2058,60 @@ Begin
     If Not OpenMessageArea (False, True) Then
       Goto EndOfProc;
 
-  Msg^. CreateNewMessage;
-
-  If (PostMode = pmReply) And (cReply <> '') Then
-    Msg^. SetKludge (#1'REPLY:', #1'REPLY: ' + cReply);
-
-  { This is merely a workaround, but proper solution requires
-    changes to LNG files, which would make sense only if
-    Tornado would be used by non-Russian systems. }
-  If R. Lang = 'RUSSIAN' Then
-    Msg^. SetKludge (#1'CHRS:', #1'CHRS: CP866 2');
-
-  If GetSysTZUTC (S) Then
-    Msg^. SetKludge (#1'TZUTC:', #1'TZUTC: ' + S);
-
-  If Options And pfUpgrader <> 0 Then
-    Msg^. SetKludge (#1'PID:', #1'PID: ' + NameVer + ' upgrade manager');
-
-  Msg^. SetFrom (FromName);
-  Msg^. SetTo (ToName);
-  Msg^. SetSubject (mSubj);
-  Msg^. SetAttribute (maLocal, True);
-  Msg^. SetAttribute (maPrivate, (MsgArea. AreaType = btNetmail)
-    Or (Options And pfPrivate <> 0));
-
-  If Options And pfUseDefaultAddr <> 0 Then
+  If PostMode = pmEdit Then
   Begin
-    OrigAddr := MsgArea. Address;
-    DestAddr := MsgArea. Address;
-  End;
-
-  Msg^. SetFromAndToAddress (OrigAddr, DestAddr, True);
-  Msg^. SetTextPos (Msg^. GetTextSize);
-
-  If (MsgArea. AreaType = btNetmail) And
-    (PostMode = pmReply) And
-    (MsgArea. GateWay <> '') And
-    (eMail <> '') And
-    (AddressToStrEx (DestAddr) = MsgArea. GateWay) Then
+    Msg^. OpenMessage;
+    Msg^. GetFromAddress (OrigAddr);
+    Msg^. SetFromAddress (OrigAddr, True);
+    Msg^. ResetDateTime;
+    Msg^. SetTextPos (Msg^. AfterLastKludge);
+    Msg^. TruncateText;
+  End Else
   Begin
-    S := PlaceSubStr (ToName, '"', '''');
-    Msg^. PutString ('To: "' + S + '" <' + eMail + '>');
-    Msg^. PutString ('');
+    Msg^. CreateNewMessage;
+
+    If (PostMode = pmReply) And (cReply <> '') Then
+      Msg^. SetKludge (#1'REPLY:', #1'REPLY: ' + cReply);
+
+    { This is merely a workaround, but proper solution requires
+      changes to LNG files, which would make sense only if
+      Tornado would be used by non-Russian systems. }
+
+    If R. Lang = 'RUSSIAN' Then
+      Msg^. SetKludge (#1'CHRS:', #1'CHRS: CP866 2');
+
+    If GetSysTZUTC (S) Then
+      Msg^. SetKludge (#1'TZUTC:', #1'TZUTC: ' + S);
+
+    If Options And pfUpgrader <> 0 Then
+      Msg^. SetKludge (#1'PID:', #1'PID: ' + NameVer + ' upgrade manager');
+
+    Msg^. SetFrom (FromName);
+    Msg^. SetTo (ToName);
+    Msg^. SetSubject (mSubj);
+    Msg^. SetAttribute (maLocal, True);
+    Msg^. SetAttribute (maPrivate, (MsgArea. AreaType = btNetmail)
+      Or (Options And pfPrivate <> 0));
+
+    If Options And pfUseDefaultAddr <> 0 Then
+    Begin
+      OrigAddr := MsgArea. Address;
+      DestAddr := MsgArea. Address;
+    End;
+
+    Msg^. SetFromAndToAddress (OrigAddr, DestAddr, True);
+    Msg^. SetTextPos (Msg^. GetTextSize);
+
+    If (MsgArea. AreaType = btNetmail) And
+      (PostMode = pmReply) And
+      (MsgArea. GateWay <> '') And
+      (eMail <> '') And
+      (AddressToStrEx (DestAddr) = MsgArea. GateWay) Then
+    Begin
+      S := PlaceSubStr (ToName, '"', '''');
+      Msg^. PutString ('To: "' + S + '" <' + eMail + '>');
+      Msg^. PutString ('');
+    End;
   End;
 
   While Not EoF (F) Do
@@ -2086,7 +2160,7 @@ Begin
   If MsgArea. Name <> '' Then
   Begin
     If OpenMessageArea (True, True) Then
-      If PostMsg (pmNew, '', {'',} '', Tpl) Then
+      If PostMsg (pmNew, '', '', Tpl) Then
         LogWrite ('+', sm (smlPosting) + ZeroMsg (MsgArea. Name, True));
     CloseMessageBase (Msg);
   End

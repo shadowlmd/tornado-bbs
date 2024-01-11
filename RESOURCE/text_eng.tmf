@@ -42,7 +42,7 @@
 [View parameters     <F2>   ]
 [Chat with user      <Alt-C>]
 [\ Service.. ]
-[Reserved]
+[Editing message #]
 [Status Line On/Off  <F10>  ]
 [DOS Shell...        <Alt-J>]
 [Manual Send...      <PgUp> ]
@@ -401,3 +401,4 @@
 [Telnet: unable to connect to %1]
 [Was: %1, set: %2]
 [EndCount wrong]
+[ in area: ]

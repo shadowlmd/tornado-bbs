@@ -950,7 +950,8 @@ Begin
   Vizualize := True;
   MaxStrLen := X2 - X1;
   Load (FN);
-  TextBuf^. Insert (NewLine (''));
+  If TextBuf^. Count < 1 Then
+    TextBuf^. Insert (NewLine (''));
 
   Y := (Y2 - Y1 + 2) Shr 1;
   X := 1;
