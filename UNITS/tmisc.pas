@@ -3139,7 +3139,9 @@ Begin
 
   Tmp := TrimLead (Copy (S, 1, I - 1));
 
-  If (Pos (' ', Tmp) <> 0) Or Not ConsistsOf (Tmp, LettersOnly) Then
+  If (Tmp <> '') And
+     ((Pos (' ', Tmp) <> 0) Or Not ConsistsOf (Tmp, LettersOnly))
+  Then
     Exit;
 
   While I <= MaxQuoteLen Do
