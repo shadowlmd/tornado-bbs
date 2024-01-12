@@ -775,12 +775,12 @@ Begin
 
   If (UserName = LoString (mTo)) And
      ((MsgArea. AreaType <> btNetmail) Or
-      (AddressCompare(mToAddr, MsgArea. Address) = 0))
+      (AddressCompare (mToAddr, MsgArea. Address) = 0))
   Then
     Exit;
 
   If (UserName = LoString (mFrom)) And
-     (AddressCompare(mFromAddr, MsgArea. Address) = 0)
+     (AddressCompare (mFromAddr, MsgArea. Address) = 0)
   Then
     Exit;
 
@@ -798,16 +798,18 @@ Begin
 
   CannotModifyMsg := True;
 
-  If H^. MsgFrom <> R. Name Then
+  If H^. IsSent Then
     Exit;
 
-  If H^. IsSent Then
+  If (H^. MsgFrom <> R. Name) Or
+     (AddressCompare (H^. FromAddr, MsgArea. Address) <> 0)
+  Then
     Exit;
 
   If H^. IsRcvd And
      ((H^. MsgTo <> R. Name) Or
       ((MsgArea. AreaType = btNetmail) And
-       (AddressCompare(H^. ToAddr, MsgArea. Address) <> 0)))
+       (AddressCompare (H^. ToAddr, MsgArea. Address) <> 0)))
   Then
     Exit;
 
@@ -858,7 +860,7 @@ Begin
     S := UpString (H^. MsgTo);
     if ((S = UpString (R. Name)) Or (S = UpString (R. Alias))) And
        ((MsgArea. AreaType <> btNetmail) Or
-        (AddressCompare(H^. ToAddr, MsgArea. Address) = 0)) Then
+        (AddressCompare (H^. ToAddr, MsgArea. Address) = 0)) Then
     Begin
       H^. IsRcvd := True;
       Msg^. SetAttribute (maReceived, True);
@@ -1566,7 +1568,7 @@ Begin
           (((UpName <> Nil) And (H^. MsgTo = UpName^)) Or
            ((UpAlias <> Nil) And (H^. MsgTo = UpAlias^))) And
           ((MsgArea. AreaType <> btNetmail) Or
-           (AddressCompare(H^. ToAddr, MsgArea. Address) = 0))
+           (AddressCompare (H^. ToAddr, MsgArea. Address) = 0))
         Then
           PrivNumsColl^. Insert (Pointer (Msg^. Current));
 
