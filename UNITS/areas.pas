@@ -761,33 +761,57 @@ End;
 
 Function DontShowMsg (Const mFrom, mTo: String; Const mFromAddr, mToAddr: TAddress): Boolean;
 Var
-  UserName, ToName : String;
+  UserName: String;
 
 Begin
+  DontShowMsg := False;
+
   UserName := LoString (R. Name);
-  ToName := LoString (mTo);
 
   If (R. Security >= MsgArea. SysOpSec) And
     FlagsValid (R. Flags, MsgArea. SysOpFlags)
   Then
-    DontShowMsg := False
-  Else
-  If (UserName = ToName) Or (LoString (R. Alias) = ToName) Then
-    DontShowMsg := (MsgArea. AreaType = btNetmail) And
-                   (AddressCompare(mToAddr, MsgArea. Address) <> 0)
-  Else
-  If UserName = LoString (mFrom) Then
-    DontShowMsg := AddressCompare(mFromAddr, MsgArea. Address) <> 0
-  Else
-    DontShowMsg := True;
+    Exit;
+
+  If (UserName = LoString (mTo)) And
+     ((MsgArea. AreaType <> btNetmail) Or
+      (AddressCompare(mToAddr, MsgArea. Address) = 0))
+  Then
+    Exit;
+
+  If (UserName = LoString (mFrom)) And
+     (AddressCompare(mFromAddr, MsgArea. Address) = 0)
+  Then
+    Exit;
+
+  DontShowMsg := True;
 End;
 
 Function CannotModifyMsg: Boolean;
 Begin
-  CannotModifyMsg := (H^. IsRcvd Or H^. IsSent Or (H^. MsgFrom <> R. Name) Or
-                      (AddressCompare(H^. FromAddr, MsgArea. Address) <> 0)) And
-                     ((MsgArea. SysOpSec > R. Security) Or
-                      Not FlagsValid (R. Flags, MsgArea. SysOpFlags));
+  If (R. Security >= MsgArea. SysOpSec) And
+    FlagsValid (R. Flags, MsgArea. SysOpFlags) Then
+  Begin
+    CannotModifyMsg := False;
+    Exit;
+  End;
+
+  CannotModifyMsg := True;
+
+  If H^. MsgFrom <> R. Name Then
+    Exit;
+
+  If H^. IsSent Then
+    Exit;
+
+  If H^. IsRcvd And
+     ((H^. MsgTo <> R. Name) Or
+      ((MsgArea. AreaType = btNetmail) And
+       (AddressCompare(H^. ToAddr, MsgArea. Address) <> 0)))
+  Then
+    Exit;
+
+  CannotModifyMsg := False;
 End;
 
 Procedure ShowCurrentMsg (Pause: Boolean);
