@@ -344,7 +344,7 @@ Begin
   Begin
     Msg^. GetStringPChar (LineBuf, MaxLineSize);
 
-    If LineBuf[0] = #1 Then
+    If LineBuf [0] = #1 Then
       Continue;
 
     If StrLen (LineBuf) = 0 Then
@@ -1703,7 +1703,7 @@ Begin
           While Not Msg^. EndOfMessage Do
           Begin
             Msg^. GetStringPChar (LineBuf, MaxLineSize);
-            If (LineBuf[0] = #1) Or (StrLen (LineBuf) = 0) Then
+            If (LineBuf [0] = #1) Or (StrLen (LineBuf) = 0) Then
               Continue;
 
             While StrLen (LineBuf) <> 0 Do
