@@ -81,8 +81,8 @@ Const
   kbDel   = #127;
   kbHome  = #5;
   kbEnd   = #6;
-  kbPgUp  = #8;
-  kbPgDn  = #9;
+  kbPgUp  = #14;
+  kbPgDn  = #15;
 
   trcSysMsgPrefix = #11;
 
