@@ -242,12 +242,14 @@ Begin
                 ComWrite (EmuCursorRight (Length (S) - Index + 1), 0);
                 Index := Length (S) + 1;
               End;
+     kbPgUp,
        kbUp : If Options And ofHistory <> 0 Then
                 If CurHistoryItem > 0 Then
                 Begin
                   Dec (CurHistoryItem);
                   UpdateString;
                 End;
+     kbPgDn,
      kbDown : If Options And ofHistory <> 0 Then
                 If CurHistoryItem < ReadHistory^. Count - 1 Then
                 Begin

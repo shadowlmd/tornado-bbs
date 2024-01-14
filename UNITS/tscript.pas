@@ -140,7 +140,8 @@ Type
                      rvFLGS, rvLINS, rvPSWD, rvSYSO, rvBBSN, rvDATE, rvTIME,
                      rvFNUM, rvFGRN, rvMNUM, rvMGRN, rvFARE, rvFGRP, rvMARE,
                      rvMGRP, rvFAGR, rvFAMT, rvFGAM, rvMAGR, rvMAMT, rvMGAM,
-                     rvKeybUp, rvKeybDown, rvKeybRight, rvKeybLeft, rvKeybHome,
+                     rvKeybUp, rvKeybDown, rvKeybPgUp, rvKeybPgDn,
+                     rvKeybRight, rvKeybLeft, rvKeybHome,
                      rvKeybEnd, rvFADlPath, rvFAUlPath, rvFAFileList,
                      rvMAAddress, rvMAOrigin, rvMABase, rvMAPath, rvMABoard,
                      rvSELN, rvArgCount, rvCfgPath, rvCfgTempDir,
@@ -1704,6 +1705,8 @@ Begin
                vReadOnly);
     rvKeybUp : AddSingleVarByChecksum (CSum, tvString, kbUp, vReadOnly);
     rvKeybDown : AddSingleVarByChecksum (CSum, tvString, kbDown, vReadOnly);
+    rvKeybPgUp : AddSingleVarByChecksum (CSum, tvString, kbPgUp, vReadOnly);
+    rvKeybPgDn : AddSingleVarByChecksum (CSum, tvString, kbPgDn, vReadOnly);
     rvKeybRight : AddSingleVarByChecksum (CSum, tvString, kbRight, vReadOnly);
     rvKeybLeft : AddSingleVarByChecksum (CSum, tvString, kbLeft, vReadOnly);
     rvKeybHome : AddSingleVarByChecksum (CSum, tvString, kbHome, vReadOnly);
@@ -4164,6 +4167,8 @@ Begin
       Insert ('KEYB_RIGHT', rvKeybRight);
       Insert ('KEYB_DOWN', rvKeybDown);
       Insert ('KEYB_UP', rvKeybUp);
+      Insert ('KEYB_PGDN', rvKeybPgDn);
+      Insert ('KEYB_PGUP', rvKeybPgUp);
       Insert ('$MGAM', rvMGAM);
       Insert ('$MAMT', rvMAMT);
       Insert ('$MAGR', rvMAGR);

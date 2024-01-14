@@ -672,7 +672,7 @@ Begin
         Begin
           C := ReadKey;
 
-          If C in [#71, #72, #75, #77, #79, #80, #83] Then
+          If C in [#71, #72, #73, #75, #77, #79, #80, #81, #83] Then
           Begin
             Case C Of
               #72 : ComReadKey := kbUp;
@@ -682,6 +682,8 @@ Begin
               #83 : ComReadKey := kbDel;
               #71 : ComReadKey := kbHome;
               #79 : ComReadKey := kbEnd;
+              #73 : ComReadKey := kbPgUp;
+              #81 : ComReadKey := kbPgDn;
             End;
 
             Exit;
@@ -717,7 +719,7 @@ Begin
 
               If Length (S) = 2 Then
               Begin
-                If (S [1] = '[') And (S [2] in ['A'..'D', 'H', 'Y', 'K']) Then
+                If (S [1] = '[') And (S [2] in ['A'..'D', 'H', 'Y', 'K', 'U', 'V']) Then
                 Begin
                   Case S [2] Of
                          'A' : ComReadKey := kbUp;
@@ -726,6 +728,8 @@ Begin
                          'D' : ComReadKey := kbLeft;
                          'H' : ComReadKey := kbHome;
                     'Y', 'K' : ComReadKey := kbEnd;
+                         'U' : ComReadKey := kbPgDn;
+                         'V' : ComReadKey := kbPgUp;
                   End;
 
                   Exit;

@@ -983,7 +983,9 @@ Begin
     C := ComReadKey;
 
     Case C Of
+        kbPgUp,
         kbUp    : MoveTextUp;
+        kbPgDn,
         kbDown  : MoveTextDown;
         kbLeft  : MoveTextLeft;
         kbRight : MoveTextRight;

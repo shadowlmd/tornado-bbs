@@ -422,6 +422,8 @@ Var
           S := UpString (BufStr);
           If S = 'KEYB_UP' Then MenuItem. HotKey := kbUp Else
           If S = 'KEYB_DOWN' Then MenuItem. HotKey := kbDown Else
+          If S = 'KEYB_PGUP' Then MenuItem. HotKey := kbPgUp Else
+          If S = 'KEYB_PGDN' Then MenuItem. HotKey := kbPgDn Else
           If S = 'KEYB_RIGHT' Then MenuItem. HotKey := kbRight Else
           If S = 'KEYB_LEFT' Then MenuItem. HotKey := kbLeft Else
           If S = 'KEYB_HOME' Then MenuItem. HotKey := kbHome Else

@@ -235,16 +235,15 @@ Begin
     #68: SwitchStatusBar;            {. F10 .}
     #61: IncTime;                    {. F3 .}
     #62: DecTime;                    {. F4 .}
-    #73: ManualSend;
     #59: ThreadStart (Help);         {. F1 .}
     #60: ThreadStart (UserParams);   {. F2 .}
     #31: ThreadStart (AccessLevel);  { .Alt-S. }
     #18: ThreadStart (UEdit);        { .Alt-E. }
     #50: MessageToUser;              { .Alt-M. }
     #25: PageSwitch;                 { .Alt-P. }
-    {#34: Gluck;}                    { .Alt-G. }
     #20: ThreadStart (ViewTagList);  { .Alt-T. }
     #38: LockOut;                    { .Alt-L. }
+    #22: ManualSend;                 { .Alt-U. }
     #23: InsertFile;                 { .Alt-I. }
     #36: Begin                       { .Alt-J. }
            LogWrite (':', sm (smDOSShell));

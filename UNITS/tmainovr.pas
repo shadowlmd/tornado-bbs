@@ -2281,7 +2281,9 @@ Var
       While (CurItem < Amount) And (CurItem >= 0) Do
       Begin
         Case Direction Of
+          kbPgUp,
           kbUp    : Dec (CurItem);
+          kbPgDn,
           kbDown  : Inc (CurItem);
           kbLeft  : Dec (CurItem, mHeader. ArrowVer);
           kbRight : Inc (CurItem, mHeader. ArrowVer);
@@ -2525,7 +2527,7 @@ Var
           oItem := CurItem;
 
           Case C Of
-            kbUp..kbEnd : FoundNext (C);
+            kbUp..kbPgDn : FoundNext (C);
                     #13 : If ExecAction (M) Then
                             Exit;
           Else

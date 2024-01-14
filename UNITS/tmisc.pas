@@ -2874,7 +2874,7 @@ Begin
 
   If ReplaceSpecial Then
     For I := 1 To Length (Result) Do
-      If Result [I] In [#7, #10, #13, #27] Then
+      If Result [I] In [#7, #10, #12, #13, #27] Then
         Result [I] := ' ';
 
   If ReplaceTabs Then
