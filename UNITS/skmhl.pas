@@ -303,6 +303,8 @@ type
   procedure SetRead(const Value: Boolean); virtual;
   function AbsoluteToRelative(Message: Longint): Longint; virtual;
   function RelativeToAbsolute(Message: Longint): Longint; virtual;
+  function GetFirstReply: Longint; virtual;
+  procedure SetFirstReply(const Value: Longint); virtual;
  public
   KludgeStart, KludgeEnd: Longint;
   RelativeTable: PSortedLongintCollection;
@@ -317,10 +319,6 @@ type
 
 procedure GetAttributesLine(B: PMessageBase; var S: String);
 procedure GetDateTimeLine(var DT: TMessageBaseDateTime; var S: String);
-
-function skMHLversion: String;
-function skMHLtitle: String;
-function skMHLfulltitle: String;
 
 implementation
 
@@ -1180,6 +1178,16 @@ function TMessageBase.RelativeToAbsolute(Message: Longint): Longint;
   RelativeToAbsolute:=Longint(RelativeTable^.At(Message - 1));
  end;
 
+function TMessageBase.GetFirstReply: Longint;
+ begin
+  Abstract;
+ end;
+
+procedure TMessageBase.SetFirstReply(const Value: Longint);
+ begin
+  Abstract;
+ end;
+
 {* Stuff *}
 
 procedure GetAttributesLine(B: PMessageBase; var S: String);
@@ -1231,23 +1239,6 @@ procedure GetDateTimeLine(var DT: TMessageBaseDateTime; var S: String);
      LeadingZero(DT.Min, 2) + ':' +
      LeadingZero(DT.Sec, 2) + '.' +
      LeadingZero(DT.Sec100, 2);
- end;
-
-{ version }
-
-function skMHLversion: String;
- begin
-  skMHLversion:='0.1b24';
- end;
-
-function skMHLtitle: String;
- begin
-  skMHLtitle:='skMHL ' + skMHLversion;
- end;
-
-function skMHLfulltitle: String;
- begin
-  skMHLfulltitle:=skMHLtitle + ' (q) by sk // [rAN], 1998-2001';
  end;
 
 end.

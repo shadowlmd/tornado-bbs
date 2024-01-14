@@ -237,7 +237,8 @@ Type
 
  PMsgHead = ^tMsgHead;
  tMsgHead = Record
-   MsgNum, NumOfMsgs : LongInt;
+   MsgNum, ReplyNum,
+   NumOfMsgs         : LongInt;
    FromAddr, ToAddr  : TAddress;
    IsPriv, IsRcvd,
    IsSent            : Boolean;

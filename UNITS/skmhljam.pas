@@ -130,6 +130,8 @@ type
   procedure GetStreams(var AHeaderLink, AIndexLink, ADataLink: PMessageBaseStream);
   function GetRead: Boolean; virtual;
   procedure SetRead(const Value: Boolean); virtual;
+  function GetFirstReply: Longint; virtual;
+  procedure SetFirstReply(const Value: Longint); virtual;
  private
   LastReadLink: PMessageBaseStream;
   JamDataPosition: Longint;
@@ -1171,6 +1173,16 @@ procedure TJamMessageBase.SetRead(const Value: Boolean);
    Inc(JamMessageHeader.JamHeader.TimesRead)
   else
    JamMessageHeader.JamHeader.TimesRead:=0;
+ end;
+
+function TJamMessageBase.GetFirstReply: Longint;
+ begin
+  GetFirstReply:=GetReplyFirst;
+ end;
+
+procedure TJamMessageBase.SetFirstReply(const Value: Longint);
+ begin
+  SetReplyFirst(Value);
  end;
 
 { private methods }

@@ -60,6 +60,8 @@ type
   procedure GetHeader(var AHeader: TFidoHeader);
   function GetRead: Boolean; virtual;
   procedure SetRead(const Value: Boolean); virtual;
+  function GetFirstReply: Longint; virtual;
+  procedure SetFirstReply(const Value: Longint); virtual;
  private
   Link: PMessageBaseStream;
   Header: TFidoHeader;
@@ -693,6 +695,16 @@ procedure TFidoMessageBase.SetRead(const Value: Boolean);
    Inc(Header.TimesRead)
   else
    Header.TimesRead:=0;
+ end;
+
+function TFidoMessageBase.GetFirstReply: Longint;
+ begin
+  GetFirstReply:=GetReplyNext;
+ end;
+
+procedure TFidoMessageBase.SetFirstReply(const Value: Longint);
+ begin
+  SetReplyNext(Value);
  end;
 
 { private methods }

@@ -798,7 +798,7 @@ Begin
 
   CannotModifyMsg := True;
 
-  If H^. IsSent Then
+  If (H^. IsSent) Or (H^. ReplyNum <> 0) Then
     Exit;
 
   If (H^. MsgFrom <> R. Name) Or
@@ -843,6 +843,7 @@ Begin
   H^. IsRcvd := Msg^. GetAttribute (maReceived);
   H^. IsSent := Msg^. GetAttribute (maSent);
   H^. MsgNum := Msg^. Current;
+  H^. ReplyNum := Msg^. GetFirstReply;
   H^. NumOfMsgs := Msg^. GetCount;
 
   If Msg^. GetKludge (#1'MSGID', S) Then
@@ -880,7 +881,9 @@ Begin
     Exit;
   End;
 
-  S := Long2Str (H^. MsgNum) + '/' + Long2Str (H^. NumOfMsgs);
+  S := Long2Str (H^. MsgNum) + ' / ' + Long2Str (H^. NumOfMsgs);
+  If H^. ReplyNum <> 0 Then
+    S := S + ' +' + Long2Str (Msg^. AbsoluteToRelative (H^. ReplyNum));
   If H^. IsRcvd Then
     S := S + ' (Rcv)';
   If H^. IsSent Then

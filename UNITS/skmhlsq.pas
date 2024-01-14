@@ -103,6 +103,8 @@ type
   procedure SeekHighWater;
   function GetRead: Boolean; virtual;
   procedure SetRead(const Value: Boolean); virtual;
+  function GetFirstReply: Longint; virtual;
+  procedure SetFirstReply(const Value: Longint); virtual;
  private
   SquishIndex: TSquishIndex;
   SquishFrame: TSquishFrame;
@@ -1129,6 +1131,16 @@ procedure TSquishMessageBase.SetRead(const Value: Boolean);
    SquishMessageHeader.Attr:=SquishMessageHeader.Attr or squishaRead
   else
    SquishMessageHeader.Attr:=SquishMessageHeader.Attr and not squishaRead;
+ end;
+
+function TSquishMessageBase.GetFirstReply: Longint;
+ begin
+  GetFirstReply:=SquishMessageHeader.Replies[1];
+ end;
+
+procedure TSquishMessageBase.SetFirstReply(const Value: Longint);
+ begin
+  SquishMessageHeader.Replies[1]:=Value;
  end;
 
 { private methods }
