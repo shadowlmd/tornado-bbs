@@ -287,6 +287,8 @@ type
   function KillMessage: Boolean; virtual;
   function GetLastRead(const UserNumber: Longint): Longint; virtual;
   procedure SetLastRead(const UserNumber: Longint; const Value: Longint); virtual;
+  function GetReplyTo: Longint; virtual;
+  procedure SetReplyTo(const Value: Longint); virtual;
   procedure ResetDateTime;
   procedure SetBaseType(const BaseType: TBaseType); virtual;
   procedure PutOrigin(Address: TAddress; const Text: String); virtual;
@@ -1033,6 +1035,16 @@ function TMessageBase.GetLastRead(const UserNumber: Longint): Longint;
  end;
 
 procedure TMessageBase.SetLastRead(const UserNumber: Longint; const Value: Longint);
+ begin
+  Abstract;
+ end;
+
+function TMessageBase.GetReplyTo: Longint;
+ begin
+  Abstract;
+ end;
+
+procedure TMessageBase.SetReplyTo(const Value: Longint);
  begin
   Abstract;
  end;

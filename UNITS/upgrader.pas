@@ -216,7 +216,7 @@ Begin
         PostFile (pmNew, UR. FileName, Str2Long (ExtractWord (2, UR. InformVia,
           BracketsOnly)), Cnf. SysOp, R. Name,
           'Message from the Tornado upgrade manager', '', '', MsgArea. Address,
-          MsgArea. Address, pfAutoOpen+pfUpgrader+pfUseDefaultAddr)
+          MsgArea. Address, 0, pfAutoOpen + pfUpgrader+pfUseDefaultAddr)
       Else
         LogWrite ('!', sm (smFile) + UR. FileName + sm (smNotFound));
   End

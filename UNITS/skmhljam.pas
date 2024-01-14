@@ -120,10 +120,10 @@ type
   function KillMessage: Boolean; virtual;
   function GetLastRead(const UserNumber: Longint): Longint; virtual;
   procedure SetLastRead(const UserNumber: Longint; const Value: Longint); virtual;
-  function GetReplyTo: Longint;
+  function GetReplyTo: Longint; virtual;
   function GetReplyFirst: Longint;
   function GetReplyNext: Longint;
-  procedure SetReplyTo(const AReplyTo: Longint);
+  procedure SetReplyTo(const Value: Longint); virtual;
   procedure SetReplyFirst(const AReplyFirst: Longint);
   procedure SetReplyNext(const AReplyNext: Longint);
   procedure GetMessageHeader(var AHeader: TJamMessageHeaderFirst);
@@ -1135,9 +1135,9 @@ function TJamMessageBase.GetReplyNext: Longint;
   GetReplyNext:=JamMessageHeader.JamHeader.ReplyNext;
  end;
 
-procedure TJamMessageBase.SetReplyTo(const AReplyTo: Longint);
+procedure TJamMessageBase.SetReplyTo(const Value: Longint);
  begin
-  JamMessageHeader.JamHeader.ReplyTo:=AReplyTo;
+  JamMessageHeader.JamHeader.ReplyTo:=Value;
  end;
 
 procedure TJamMessageBase.SetReplyFirst(const AReplyFirst: Longint);

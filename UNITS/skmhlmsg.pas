@@ -53,8 +53,8 @@ type
   procedure SetLastRead(const UserNumber: Longint; const Value: Longint); virtual;
   function GetAFLAG(const Flag: String): Boolean;
   procedure SetAFLAG(const Flag: String; const Enable: Boolean);
-  procedure SetReplyTo(const ReplyTo: Longint);
-  function GetReplyTo: Longint;
+  procedure SetReplyTo(const Value: Longint); virtual;
+  function GetReplyTo: Longint; virtual;
   procedure SetReplyNext(const ReplyNext: Longint);
   function GetReplyNext: Longint;
   procedure GetHeader(var AHeader: TFidoHeader);
@@ -659,9 +659,9 @@ procedure TFidoMessageBase.SetAFLAG(const Flag: String; const Enable: Boolean);
    end;
  end;
 
-procedure TFidoMessageBase.SetReplyTo(const ReplyTo: Longint);
+procedure TFidoMessageBase.SetReplyTo(const Value: Longint);
  begin
-  Header.ReplyTo:=ReplyTo;
+  Header.ReplyTo:=Value;
  end;
 
 function TFidoMessageBase.GetReplyTo: Longint;

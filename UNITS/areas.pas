@@ -77,7 +77,7 @@ Procedure Msg2SysOp (Const Subj, Tpl: String);
 
 Procedure PostFile (PostMode: tPostMode; Const FileName: PathStr; AbsoluteNum: Word;
           Const FromName, ToName, mSubj, cReply, eMail: String; OrigAddr, DestAddr: TAddress;
-          Options: Byte);
+          ReplyToNumRelative: LongInt; Options: Byte);
 Procedure TypeFile (Const FileName: PathStr);
 
 Procedure ReadMsgs;
@@ -103,8 +103,8 @@ Uses
   skOpen;
 
 Const
-  UserNameLen      = 36;
-  AddrLen          = 25;
+  UserNameLen      = 45;
+  AddrLen          = 23;
 
   ml_MaxNumbers    = 99;
   ml_NumLen        = 2;
@@ -523,7 +523,7 @@ Begin
   Cls;
   ComWriteLn (lang (laMsgHead), eoMacro + eoCodes);
   ComWrite (lang (laMsgFrom), eoMacro + eoCodes + eoNoFlush);
-  ComWriteLn (Pad (R. Name, UserNameLen) + '  ' +
+  ComWriteLn (Pad (R. Name, UserNameLen) +
     Pad (AddressToStrEx (MsgArea. Address), AddrLen), 0);
   ComWrite (lang (laMsgTo), eoMacro + eoCodes + eoNoFlush);
 
@@ -567,8 +567,6 @@ Begin
           ComWrite (Pad (ToUser, UserNameLen), eoNoFlush);
         End;
       End;
-
-  ComWrite ('  ', eoNoFlush);
 
   WToAddr := '';
   If MsgArea. AreaType = btNetmail Then
@@ -744,7 +742,7 @@ Begin
     ParseStrAddr (RelativeAddr (WToAddr, MsgArea. Address), DestAddr);
 
     PostFile (PostMode, TmpTextName, MtoAbs (R. MsgGroup, R. MsgArea), R. Name,
-      ToUser, Subj, H^. MSGID, H^. eMail, MsgArea. Address, DestAddr, Options);
+      ToUser, Subj, H^. MSGID, H^. eMail, MsgArea. Address, DestAddr, H^. MsgNum, Options);
 
     tDeleteFile (TmpTextName);
 
@@ -820,7 +818,7 @@ Procedure ShowCurrentMsg (Pause: Boolean);
 
 Var
   PS      : PString;
-  i       : Integer;
+  i       : LongInt;
   Color   : Byte;
   Secured : Boolean;
   S       : String;
@@ -843,8 +841,10 @@ Begin
   H^. IsRcvd := Msg^. GetAttribute (maReceived);
   H^. IsSent := Msg^. GetAttribute (maSent);
   H^. MsgNum := Msg^. Current;
+
   H^. ReplyNum := Msg^. GetFirstReply;
-  H^. NumOfMsgs := Msg^. GetCount;
+  If H^. ReplyNum <> 0 Then
+    H^. ReplyNum := Msg^. AbsoluteToRelative (H^. ReplyNum);
 
   If Msg^. GetKludge (#1'MSGID', S) Then
     H^. MSGID := Copy (S, 9, 255);
@@ -869,29 +869,45 @@ Begin
     End;
   End;
 
+  i := Msg^. GetReplyTo;
+  If i <> 0 Then
+    i := Msg^. AbsoluteToRelative (i);
+
   Msg^. CloseMessage;
 
   If Pause Then
     Cls;
 
   ComWriteLn (lang (laMsgHead), eoMacro + eoCodes);
+
   If Not (Pause Or More) Then
   Begin
     FinishReading := True;
     Exit;
   End;
 
-  S := Long2Str (H^. MsgNum) + ' / ' + Long2Str (H^. NumOfMsgs);
+  S := Long2Str (H^. MsgNum) + '/' + Long2Str (Msg^. GetCount);
+
+  If i <> 0 Then
+    S := S + ' -' + Long2Str (i);
   If H^. ReplyNum <> 0 Then
-    S := S + ' +' + Long2Str (Msg^. AbsoluteToRelative (H^. ReplyNum));
+    S := S + ' +' + Long2Str (H^. ReplyNum);
   If H^. IsRcvd Then
-    S := S + ' (Rcv)';
+    S := S + ' Rcv';
   If H^. IsSent Then
-    S := S + ' (Snt)';
+    S := S + ' Snt';
   If H^. IsPriv Then
-    S := S + ' (Pvt)';
+    S := S + ' Pvt';
+
+  If Length (S) >= UserNameLen Then
+  Begin
+    S [UserNameLen] := '>';
+    SetLength (S, UserNameLen);
+  End;
+
   ComWriteLn (lang (laMsgNum) + Pad (S, UserNameLen) + FormattedDate (
     H^. MsgDate, 'DD NNN YYYY HH:II'), eoMacro + eoCodes);
+
   If Not (Pause Or More) Then
   Begin
     FinishReading := True;
@@ -901,6 +917,7 @@ Begin
   ComWrite (lang (laMsgFrom), eoMacro + eoCodes + eoNoFlush);
   ComWrite (Pad (H^. MsgFrom, UserNameLen), eoNoFlush);
   ComWriteLn (AddressToStrEx (H^. FromAddr), eoDisable01);
+
   If Not (Pause Or More) Then
   Begin
     FinishReading := True;
@@ -908,11 +925,13 @@ Begin
   End;
 
   ComWrite (lang (laMsgTo), eoMacro + eoCodes + eoNoFlush);
+
   If MsgArea. AreaType <> btNetmail Then
     ComWriteLn (Copy (H^. MsgTo, 1, UserNameLen), eoDisable01)
   Else
     ComWriteLn (Pad (H^. MsgTo, UserNameLen) + AddressToStrEx (H^. ToAddr),
       eoDisable01);
+
   If Not (Pause Or More) Then
   Begin
     FinishReading := True;
@@ -922,11 +941,13 @@ Begin
   Secured := H^. IsPriv And DontShowMsg (H^. MsgFrom, H^. MsgTo, H^. FromAddr, H^. ToAddr);
 
   ComWrite (lang (laMsgSubj), eoMacro + eoCodes + eoNoFlush);
+
   If Secured Then
     ComWriteLn ('* Private *', 0)
   Else
     ComWriteLn (Copy (H^. MsgSubj, 1, 79 - Length (ZeroMsg (lang (laMsgSubj),
       True))), eoDisable01);
+
   If Not (Pause Or More) Then
   Begin
     FinishReading := True;
@@ -934,6 +955,7 @@ Begin
   End;
 
   ComWriteLn (lang (laMsgFooter), eoMacro + eoCodes);
+
   If Not (Pause Or More) Then
   Begin
     FinishReading := True;
@@ -1148,7 +1170,17 @@ Begin
                    Message (lang (laMsgSaved));
                    Msg^. Seek (H^. MsgNum);
                    If Msg^. SeekFound Then
+                   Begin
+                     If (Msg^. Current = H^.MsgNum) And
+                        (H^. ReplyNum = 0) Then
+                     Begin
+                       Msg^. OpenMessageHeader;
+                       Msg^. SetFirstReply (Msg^. GetHighest);
+                       Msg^. WriteMessageHeader;
+                       Msg^. CloseMessage;
+                     End;
                      Continue;
+                   End;
                  End Else
                    Continue;
                End Else
@@ -2099,8 +2131,12 @@ Begin
   Begin
     Msg^. CreateNewMessage;
 
-    If (PostMode = pmReply) And (cReply <> '') Then
-      Msg^. SetKludge (#1'REPLY:', #1'REPLY: ' + cReply);
+    If PostMode = pmReply Then
+    Begin
+      Msg^. SetReplyTo (Msg^. RelativeToAbsolute (ReplyToNumRelative));
+      If cReply <> '' Then
+        Msg^. SetKludge (#1'REPLY:', #1'REPLY: ' + cReply);
+    End;
 
     { This is merely a workaround, but proper solution requires
       changes to LNG files, which would make sense only if

@@ -93,8 +93,8 @@ type
   procedure SetLastRead(const UserNumber: Longint; const Value: Longint); virtual;
   procedure GetReplies(var Replies: TSquishMessageReplies);
   procedure SetReplies(var Replies: TSquishMessageReplies);
-  function GetReplyTo: Longint;
-  procedure SetReplyTo(const AReplyTo: Longint);
+  function GetReplyTo: Longint; virtual;
+  procedure SetReplyTo(const Value: Longint); virtual;
   procedure GetMessageHeader(var AHeader: TSquishMessageHeader);
   procedure GetBaseHeader(var AHeader: TSquishBaseHeader);
   procedure GetStreams(var ADataLink, AIndexLink: PMessageBaseStream);
@@ -1075,9 +1075,9 @@ function TSquishMessageBase.GetReplyTo: Longint;
   GetReplyTo:=SquishMessageHeader.ReplyTo;
  end;
 
-procedure TSquishMessageBase.SetReplyTo(const AReplyTo: Longint);
+procedure TSquishMessageBase.SetReplyTo(const Value: Longint);
  begin
-  SquishMessageHeader.ReplyTo:=AReplyTo;
+  SquishMessageHeader.ReplyTo:=Value;
  end;
 
 procedure TSquishMessageBase.GetMessageHeader(var AHeader: TSquishMessageHeader);
