@@ -247,7 +247,7 @@ Function AsciiPos (S, SubStr: String; Quote: Char): Byte;
   { Finds SubStr in S, except quoted parts }
 
 Function SplitString (Var S: String; Len: Byte): String;
-Function SplitStringPChar (Var Buf: PChar; Len: Byte; ReplaceTabs: Boolean): String;
+Function SplitStringPChar (Var Buf: PChar; Len: Byte; ReplaceTabs, ReplaceSpecial: Boolean): String;
 Function WordInString (Const W, S: String): Boolean;
 Procedure Str2Set (Const S: String; Var CS: CharSet);
 
@@ -2813,7 +2813,7 @@ Begin
   End;
 End;
 
-Function SplitStringPChar (Var Buf: PChar; Len: Byte; ReplaceTabs: Boolean): String;
+Function SplitStringPChar (Var Buf: PChar; Len: Byte; ReplaceTabs, ReplaceSpecial: Boolean): String;
 Var
   I, N   : Integer;
   W      : String;
@@ -2871,6 +2871,11 @@ Begin
     StrCopy (Buf, Buf + N)
   Else
     StrCopy (Buf, '');
+
+  If ReplaceSpecial Then
+    For I := 1 To Length (Result) Do
+      If Result [I] In [#7, #10, #13, #27] Then
+        Result [I] := ' ';
 
   If ReplaceTabs Then
     PlaceSubStrP (Result, #9, ReplaceTabSpaces);

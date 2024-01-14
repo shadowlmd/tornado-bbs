@@ -351,7 +351,7 @@ Begin
       MsgText^. InsLine ('')
     Else
     Begin
-      S := TrimTrail (SplitStringPChar (LineBuf, 79, True));
+      S := TrimTrail (SplitStringPChar (LineBuf, 79, True, True));
 
       If Copy (S, 1, 8) = 'SEEN-BY:' Then
         Continue;
@@ -370,7 +370,7 @@ Begin
         i := 79 - Length (S);
 
         While StrLen (LineBuf) <> 0 Do
-          MsgText^. InsLine (S + Trim (SplitStringPChar (LineBuf, i, True)));
+          MsgText^. InsLine (S + Trim (SplitStringPChar (LineBuf, i, True, True)));
       End;
     End;
   End;
@@ -1708,7 +1708,7 @@ Begin
 
             While StrLen (LineBuf) <> 0 Do
               If TestMasks (Masks, MatchedMasks,
-                SplitStringPChar (LineBuf, 255, False)) Then
+                SplitStringPChar (LineBuf, 255, False, False)) Then
               Begin
                 Match := True;
                 Break;

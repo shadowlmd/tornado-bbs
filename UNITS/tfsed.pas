@@ -221,7 +221,7 @@ Var
   Begin
     If StrLen (LineBuf) <> 0 Then
     Begin
-      S := SplitStringPChar (LineBuf, 255, True);
+      S := SplitStringPChar (LineBuf, 255, True, True);
       GetStr := True;
       Exit;
     End;
@@ -229,13 +229,13 @@ Var
     While Not Msg^. EndOfMessage Do
     Begin
       Msg^. GetStringPChar (LineBuf, MaxLineSize);
-      S := SplitStringPChar (LineBuf, 255, True);
+      S := SplitStringPChar (LineBuf, 255, True, True);
 
       If S <> '' Then
         If (S [1] = #1) Or
            (S = '---') Or
-           (Copy (S, 1, 4) = '--- ') Or
-           (Copy (S, 1, 10) = ' * Origin:')
+           (Pos ('--- ', S) = 1) Or
+           (Pos (' * Origin:', S) = 1)
         Then
           Continue;
 

@@ -526,7 +526,7 @@ Begin
               While StrLen (LineBuf) <> 0 Do
               Begin
                 S1 := PlaceSubStr (TrimTrail (SplitStringPChar (LineBuf, 78,
-                  False)), #227, 'y') + #227;
+                  False, False)), #227, 'y') + #227;
                 Len := Length (S1);
                 DAT^. Out (S1 [1], Len);
                 Inc (MsgTxtPos, Len);
