@@ -814,7 +814,7 @@ Begin
   CannotModifyMsg := False;
 End;
 
-Procedure ShowCurrentMsg (Pause: Boolean);
+Function ShowCurrentMsg (Pause, SkipSecured: Boolean): Boolean;
 
 Var
   PS      : PString;
@@ -824,6 +824,8 @@ Var
   S       : String;
 
 Begin
+  ShowCurrentMsg := True;
+
   If HotKeysStr <> '' Then
     Exit;
 
@@ -874,6 +876,13 @@ Begin
     i := Msg^. AbsoluteToRelative (i);
 
   Msg^. CloseMessage;
+
+  Secured := H^. IsPriv And DontShowMsg (H^. MsgFrom, H^. MsgTo, H^. FromAddr, H^. ToAddr);
+  If Secured And SkipSecured Then
+  Begin
+    ShowCurrentMsg := False;
+    Exit;
+  End;
 
   If Pause Then
     Cls;
@@ -937,8 +946,6 @@ Begin
     FinishReading := True;
     Exit;
   End;
-
-  Secured := H^. IsPriv And DontShowMsg (H^. MsgFrom, H^. MsgTo, H^. FromAddr, H^. ToAddr);
 
   ComWrite (lang (laMsgSubj), eoMacro + eoCodes + eoNoFlush);
 
@@ -1084,10 +1091,30 @@ Begin
       Cls;
     InitMore (0);
     FinishReading := False;
+    i := 0;
 
     While Not FinishReading Do
     Begin
-      ShowCurrentMsg (PauseAfterEach);
+      While Not ShowCurrentMsg (PauseAfterEach, True) Do
+        If i <> 5 Then
+        Begin
+          If H^. MsgNum < Msg^. GetCount Then
+            Msg^. SeekNext
+          Else
+          Begin
+            ShowCurrentMsg (PauseAfterEach, False);
+            Break;
+          End;
+        End Else
+        Begin
+          If H^. MsgNum > 1 Then
+            Msg^. SeekPrev
+          Else
+          Begin
+            ShowCurrentMsg (PauseAfterEach, False);
+            Break;
+          End;
+        End;
 
       ComWriteLn ('', 0);
 
@@ -1433,7 +1460,7 @@ ShowMsgs:
 
       If Msg^. SeekFound Then
       Begin
-        ShowCurrentMsg (True);
+        ShowCurrentMsg (True, False);
 
         If (H^. IsPriv And
             DontShowMsg (H^. MsgFrom, H^. MsgTo, H^. FromAddr, H^. ToAddr)) Or
@@ -1511,7 +1538,7 @@ Var
             End;
     End;
 
-    ShowCurrentMsg (True);
+    ShowCurrentMsg (True, False);
     ComWriteLn ('', 0);
 
     If Query (lang (laWantToAnswer), True, 0) Then
@@ -1773,7 +1800,7 @@ Show:
     If Msg^. SeekFound Then
     Begin
       Found := True;
-      ShowCurrentMsg (True);
+      ShowCurrentMsg (True, False);
 
       If (MsgArea. WriteSec > R. Security) Or
          Not FlagsValid (R. Flags, MsgArea. WriteFlags) Then
