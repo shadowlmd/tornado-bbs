@@ -844,6 +844,13 @@ Begin
   H^. IsSent := Msg^. GetAttribute (maSent);
   H^. MsgNum := Msg^. Current;
 
+  Secured := H^. IsPriv And DontShowMsg (H^. MsgFrom, H^. MsgTo, H^. FromAddr, H^. ToAddr);
+  If Secured And SkipSecured And (H^. MsgNum > 1) And (H^. MsgNum < Msg^. GetCount) Then
+  Begin
+    ShowCurrentMsg := False;
+    Exit;
+  End;
+
   H^. ReplyNum := Msg^. GetFirstReply;
   If H^. ReplyNum <> 0 Then
     H^. ReplyNum := Msg^. AbsoluteToRelative (H^. ReplyNum);
@@ -876,13 +883,6 @@ Begin
     i := Msg^. AbsoluteToRelative (i);
 
   Msg^. CloseMessage;
-
-  Secured := H^. IsPriv And DontShowMsg (H^. MsgFrom, H^. MsgTo, H^. FromAddr, H^. ToAddr);
-  If Secured And SkipSecured Then
-  Begin
-    ShowCurrentMsg := False;
-    Exit;
-  End;
 
   If Pause Then
     Cls;
@@ -1096,25 +1096,8 @@ Begin
     While Not FinishReading Do
     Begin
       While Not ShowCurrentMsg (PauseAfterEach, True) Do
-        If i <> 5 Then
-        Begin
-          If H^. MsgNum < Msg^. GetCount Then
-            Msg^. SeekNext
-          Else
-          Begin
-            ShowCurrentMsg (PauseAfterEach, False);
-            Break;
-          End;
-        End Else
-        Begin
-          If H^. MsgNum > 1 Then
-            Msg^. SeekPrev
-          Else
-          Begin
-            ShowCurrentMsg (PauseAfterEach, False);
-            Break;
-          End;
-        End;
+        If i = 5 Then Msg^. SeekPrev
+                 Else Msg^. SeekNext;
 
       ComWriteLn ('', 0);
 
