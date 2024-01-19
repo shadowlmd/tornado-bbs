@@ -234,8 +234,8 @@ Var
       If S <> '' Then
         If (S [1] = #1) Or
            (S = '---') Or
-           (Pos ('--- ', S) = 1) Or
-           (Pos (' * Origin:', S) = 1)
+           (Copy (S, 1, 4) = '--- ') Or
+           (Copy (S, 1, 10) = ' * Origin:')
         Then
           Continue;
 

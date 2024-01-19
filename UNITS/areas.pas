@@ -358,8 +358,8 @@ Begin
         Continue;
 
       If SkipTearlineAndOrigin And
-         ((S = '---') Or (Pos ('--- ', S) = 1) Or
-          (Pos (' * Origin: ', S) = 1))
+         ((S = '---') Or (Copy (S, 1, 4) = '--- ') Or
+          (Copy (S, 1, 10) = ' * Origin:'))
       Then
         Continue;
 
