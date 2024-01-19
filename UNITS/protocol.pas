@@ -1117,7 +1117,10 @@ Begin
             If TransferMode = Receive Then
             Begin
               LogWrite ('*', '!R: ' + sm (smFile) + NiceFileName (FName, 40));
-              UpLoadOk (FName, gFileSize (FName), 0);
+              If State = tsUpLoadMsg Then
+                tRenameFile (FName, Cnf. DoorInfoDir + 'msgtmp.')
+              Else
+                UpLoadOk (FName, gFileSize (FName), 0);
             End Else
             Begin
               If FName = JustFileName (FName) Then
