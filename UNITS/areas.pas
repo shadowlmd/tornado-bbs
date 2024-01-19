@@ -71,12 +71,13 @@ Procedure SelectMArea;
 
 Function  OpenMessageArea (ErrorReport, Make: Boolean): Boolean;
 
-Function  PostMsg (PostMode: tPostMode; ToUser, Subj: String; Const Tpl: String): Boolean;
+Function  PostMsg (PostMode: tPostMode; ToUser, Subj: String; Const AReply, eMail: String;
+          ReplyToNumRelative: LongInt; Const Tpl: String): Boolean;
 Procedure PrePostMsg (Const Param, Tpl: String);
 Procedure Msg2SysOp (Const Subj, Tpl: String);
 
 Procedure PostFile (PostMode: tPostMode; Const FileName: PathStr; AbsoluteNum: Word;
-          Const FromName, ToName, mSubj, cReply, eMail: String; OrigAddr, DestAddr: TAddress;
+          Const FromName, ToName, mSubj, AReply, eMail: String; OrigAddr, DestAddr: TAddress;
           ReplyToNumRelative: LongInt; Options: Byte);
 Procedure TypeFile (Const FileName: PathStr);
 
@@ -383,8 +384,8 @@ Begin
   S := GetAnswer ('', 73, 0, S);
 End;
 
-Function PostMsg (PostMode: tPostMode; ToUser, Subj: String;
-                  Const Tpl: String): Boolean;
+Function PostMsg (PostMode: tPostMode; ToUser, Subj: String; Const AReply, eMail: String;
+                  ReplyToNumRelative: LongInt; Const Tpl: String): Boolean;
 Var
   i, j, EditStartLine     : Integer;
   Options, EditY          : Byte;
@@ -661,8 +662,8 @@ Begin
     Priv := True
   Else
     If MsgArea. Private = atAsk Then
-      Priv := Query (lang (laQueryPrivate), (PostMode = pmReply) And
-        H^. IsPriv, 0)
+      Priv := Query (lang (laQueryPrivate),
+        (PostMode = pmReply) And H^. IsPriv, 0)
     Else
       Priv := MsgArea. Private = atYes;
 
@@ -741,13 +742,8 @@ Begin
             Else Options := 0;
     ParseStrAddr (RelativeAddr (WToAddr, MsgArea. Address), DestAddr);
 
-    { Temporary fix, need a better solution here }
-    If PostMode = pmNew Then
-      PostFile (PostMode, TmpTextName, MtoAbs (R. MsgGroup, R. MsgArea), R. Name,
-        ToUser, Subj, '', '', MsgArea. Address, DestAddr, 0, Options)
-    Else
-      PostFile (PostMode, TmpTextName, MtoAbs (R. MsgGroup, R. MsgArea), R. Name,
-        ToUser, Subj, H^. MSGID, H^. eMail, MsgArea. Address, DestAddr, H^. MsgNum, Options);
+    PostFile (PostMode, TmpTextName, MtoAbs (R. MsgGroup, R. MsgArea), R. Name,
+      ToUser, Subj, AReply, eMail, MsgArea. Address, DestAddr, ReplyToNumRelative, Options);
 
     tDeleteFile (TmpTextName);
 
@@ -1046,7 +1042,8 @@ End;
 Function ReplyToCurrMsg (Const Tpl: String): Boolean;
 Begin
   LogWrite ('+', sm (smAnswerInArea) + ZeroMsg (MsgArea. Name, True));
-  If PostMsg (pmReply, H^. MsgFrom, H^. MsgSubj, Tpl) Then
+  If PostMsg (pmReply, H^. MsgFrom, H^. MsgSubj,
+              H^. MSGID, H^. eMail, H^. MsgNum, Tpl) Then
   Begin
     ReplyToCurrMsg := True;
   End Else
@@ -1201,7 +1198,7 @@ Begin
                End Else
                  Continue;
 
-           7 : If PostMsg (pmNew, '', '', 'menu') Then               {Post}
+           7 : If PostMsg (pmNew, '', '', '', '', 0, 'menu') Then    {Post}
                Begin
                  LogWrite ('+', sm (smlPosting) + ZeroMsg (MsgArea. Name,
                    True));
@@ -1254,7 +1251,7 @@ Begin
                    Long2Str (H^. MsgNum) + sm (smInArea) +
                    ZeroMsg (MsgArea. Name, True));
 
-                 PostMsg (pmEdit, H^. MsgTo, H^. MsgSubj, 'menu');
+                 PostMsg (pmEdit, H^. MsgTo, H^. MsgSubj, '', '', 0, 'menu');
 
                  Continue;
                End;
@@ -2000,7 +1997,7 @@ Begin
 
     If OpenMessageArea (True, True) Then
     Begin
-      If PostMsg (pmNew, Cnf. SysOp, Subj, Tpl) Then
+      If PostMsg (pmNew, Cnf. SysOp, Subj, '', '', 0, Tpl) Then
         LogWrite ('+', sm (smlPosting) + ZeroMsg (MsgArea. Name, True));
 
       CloseMessageBase (Msg);
@@ -2149,14 +2146,13 @@ Begin
     If PostMode = pmReply Then
     Begin
       Msg^. SetReplyTo (Msg^. RelativeToAbsolute (ReplyToNumRelative));
-      If cReply <> '' Then
-        Msg^. SetKludge (#1'REPLY:', #1'REPLY: ' + cReply);
+      If AReply <> '' Then
+        Msg^. SetKludge (#1'REPLY:', #1'REPLY: ' + AReply);
     End;
 
     { This is merely a workaround, but proper solution requires
       changes to LNG files, which would make sense only if
       Tornado would be used by non-Russian systems. }
-
     If R. Lang = 'RUSSIAN' Then
       Msg^. SetKludge (#1'CHRS:', #1'CHRS: CP866 2');
 
@@ -2240,7 +2236,7 @@ Begin
   If MsgArea. Name <> '' Then
   Begin
     If OpenMessageArea (True, True) Then
-      If PostMsg (pmNew, '', '', Tpl) Then
+      If PostMsg (pmNew, '', '', '', '', 0, Tpl) Then
         LogWrite ('+', sm (smlPosting) + ZeroMsg (MsgArea. Name, True));
     CloseMessageBase (Msg);
   End
