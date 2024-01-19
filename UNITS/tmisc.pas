@@ -3126,9 +3126,6 @@ Begin
 {$ENDIF}
 End;
 
-{$IFDEF MSDOS}
-{$IFNDEF DPMI32}
-
 Function GetQuote (Const S: String): String;
 Var
   I: Byte;
@@ -3166,6 +3163,9 @@ Begin
 
   GetQuote := Copy (S, 1, I);
 End;
+
+{$IFDEF MSDOS}
+{$IFNDEF DPMI32}
 
 { The following part of code has been cut from
   Turbo Professional 5.21 (c) by TurboPower Software, 1987, 1992. }

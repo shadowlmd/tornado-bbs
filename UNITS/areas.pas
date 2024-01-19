@@ -741,8 +741,13 @@ Begin
             Else Options := 0;
     ParseStrAddr (RelativeAddr (WToAddr, MsgArea. Address), DestAddr);
 
-    PostFile (PostMode, TmpTextName, MtoAbs (R. MsgGroup, R. MsgArea), R. Name,
-      ToUser, Subj, H^. MSGID, H^. eMail, MsgArea. Address, DestAddr, H^. MsgNum, Options);
+    { Temporary fix, need a better solution here }
+    If PostMode = pmNew Then
+      PostFile (PostMode, TmpTextName, MtoAbs (R. MsgGroup, R. MsgArea), R. Name,
+        ToUser, Subj, '', '', MsgArea. Address, DestAddr, 0, Options)
+    Else
+      PostFile (PostMode, TmpTextName, MtoAbs (R. MsgGroup, R. MsgArea), R. Name,
+        ToUser, Subj, H^. MSGID, H^. eMail, MsgArea. Address, DestAddr, H^. MsgNum, Options);
 
     tDeleteFile (TmpTextName);
 
