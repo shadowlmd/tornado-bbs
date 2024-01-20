@@ -1497,26 +1497,31 @@ PassEnd:
     ExecScript ('welcome');
     ExecRexx ('welcome');
 
-    If EMSI. Session Then
+    If Not R. Guest Then
     Begin
-      If EMSI. CheckMail Then
-        SearchPrivate;
-      If EMSI. CheckNewFiles Then
-        GlobalSearch (AllFilesMask, fsDate, atYes, '');
-    End Else
-    Begin
-      If (Cnf. ScanPrivMail = atYes) Or ((Cnf. ScanPrivMail = atAsk) And
-         Query (lang (laSearchPrivateMsg), True, ofFramed))
-      Then
-        SearchPrivate;
+      If EMSI. Session Then
+      Begin
+        If EMSI. CheckMail And (Cnf. ScanPrivMail <> atNo) Then
+          SearchPrivate;
 
-      If R. NoCalls > 1 Then
-        If Cnf. ScanNewFiles <> atNo Then
+        If EMSI. CheckNewFiles And (Cnf. ScanNewFiles <> atNo) And
+           (R. NoCalls > 1)
+        Then
+          GlobalSearch (AllFilesMask, fsDate, atYes, '');
+      End Else
+      Begin
+        If (Cnf. ScanPrivMail = atYes) Or ((Cnf. ScanPrivMail = atAsk) And
+           Query (lang (laSearchPrivateMsg), True, ofFramed))
+        Then
+          SearchPrivate;
+
+        If (Cnf. ScanNewFiles <> atNo) And (R. NoCalls > 1) Then
           GlobalSearch (AllFilesMask, fsDate, Cnf. ScanNewFiles, '1');
-    End;
+      End;
 
-    If Cnf. ShowNews <> tnNo Then
-      News (R. NoCalls <> 1);
+      If Cnf. ShowNews <> tnNo Then
+        News (R. NoCalls <> 1);
+    End;
   End;
 
   EmuDispFile ('~start');
