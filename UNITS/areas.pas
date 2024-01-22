@@ -989,8 +989,10 @@ Begin
 
     If Length (PS^) > 0 Then
     Begin
-      If (PS^ = '---') Or (Pos ('--- ', PS^) = 1) Or
-         (Pos (' * Origin: ', PS^) = 1)
+      If ((i >= MsgText^. Count - 3) And (Copy (PS^, 1, 4) = '... ')) Or
+         ((i >= MsgText^. Count - 2) And
+          ((PS^ = '---') Or (Copy (PS^, 1, 4) = '--- '))) Or
+         ((i = MsgText^. Count - 1) And (Copy (PS^, 1, 10) = ' * Origin:'))
       Then
         Color := Cnf. ColorScheme [mrOrigin]
       Else
