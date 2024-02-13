@@ -983,23 +983,34 @@ procedure GetCurrentMessageBaseDateTime(var DateTime: TMessageBaseDateTime);
 {$IFDEF VIRTUALPASCAL}
   Year, Month, Day, Dow, Hour, Min, Sec, Sec100: Longint;
 {$ELSE}
-  Year, Month, Day, {$IFNDEF DELPHI}Dow,{$ENDIF} Hour, Min, Sec, Sec100: Word;
+{$IFNDEF DELPHI}
+  Dow: Word;
+{$ENDIF}
 {$ENDIF}
  begin
   {$IFDEF DELPHI}
    DecodeDate(Date, Year, Month, Day);
    DecodeTime(Time, Hour, Min, Sec, Sec100);
   {$ELSE}
+   {$IFNDEF VIRTUALPASCAL}
+    with DateTime do
+     begin
+   {$ENDIF}
    Dos.GetDate(Year, Month, Day, Dow);
    Dos.GetTime(Hour, Min, Sec, Sec100);
+   {$IFNDEF VIRTUALPASCAL}
+     end;
+   {$ENDIF}
   {$ENDIF}
-  DateTime.Year:=Year;
-  DateTime.Month:=Month;
-  DateTime.Day:=Day;
-  DateTime.Hour:=Hour;
-  DateTime.Min:=Min;
-  DateTime.Sec:=Sec;
-  DateTime.Sec100:=Sec100;
+  {$IFDEF VIRTUALPASCAL}
+   DateTime.Year:=Year;
+   DateTime.Month:=Month;
+   DateTime.Day:=Day;
+   DateTime.Hour:=Hour;
+   DateTime.Min:=Min;
+   DateTime.Sec:=Sec;
+   DateTime.Sec100:=Sec100;
+  {$ENDIF}
  end;
 
 procedure MessageBaseDateTimeToDosDateTime(var DateTime: TMessageBaseDateTime; var DosDateTime: Longint);
@@ -1159,13 +1170,24 @@ function GenerateMSGID: String;
  const
   OldMSGID: Longint = 0;
  var
-  DateTime: TMessageBaseDateTime;
+  DateTime: PMessageBaseDateTime;
   Stamp: Longint;
  begin
+  New(DateTime);
+
   repeat
-   GetCurrentMessageBaseDateTime(DateTime);
-   MessageBaseDateTimeToDosDateTime(DateTime, Stamp);
+   GetCurrentMessageBaseDateTime(DateTime^);
+   with DateTime^ do
+    Stamp:=Longint(Year mod 4) shl 30 +
+           Longint(Month) shl 26 +
+           Longint(Day) shl 21 +
+           Longint(Hour) shl 16 +
+           Min shl 10 +
+           Sec shl 4 +
+           (Sec100 div 7);
   until OldMSGID <> Stamp;
+
+  Dispose(DateTime);
 
   OldMSGID:=Stamp;
 
