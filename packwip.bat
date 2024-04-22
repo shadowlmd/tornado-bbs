@@ -1,6 +1,6 @@
 @echo off
 
-set VERSION=1.71.3
+set VERSION=1.71.4
 for /F %%i in ('date /T') do set DATE=%%i
 
 if not exist RELEASE\* mkdir RELEASE

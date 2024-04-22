@@ -1,6 +1,6 @@
 @echo off
 
-set VERSION=1.71.3
+set VERSION=1.71.4
 
 if not exist RELEASE\* mkdir RELEASE
 
