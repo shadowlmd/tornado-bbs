@@ -1599,12 +1599,20 @@ Begin
       If Not OpenMessageArea (False, False) Then
         Continue;
 
-      If MsgArea. BaseType = mbfJam Then
-        LR := Crc32Str (LoString (R. Name))
-      Else
-        LR := R. LastRead;
+      If R. LastRead >= 0 Then
+      Begin
+        If MsgArea. BaseType = mbfJam Then
+          LR := Crc32Str (LoString (R. Name))
+        Else
+          LR := R. LastRead;
 
-      Msg^. Seek (1);
+        Msg^. Seek (Msg^. GetLastRead (LR));
+
+        If Msg^. SeekFound Then
+          Msg^. SeekNext;
+      End Else
+        Msg^. Seek (1);
+
       While Msg^. SeekFound Do
       Begin
         Msg^. OpenMessageHeader;
