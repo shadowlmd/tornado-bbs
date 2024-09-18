@@ -45,9 +45,6 @@ const
  squishaUID             = $20000;
  squishaRead            = $80000;
 
- SquishMaxMsg           : Longint = $FFFF;
- SquishKeepDays         : Longint = $7FFF;
-
 type
  PControlInformationBuffer = ^TControlInformationBuffer;
  TControlInformationBuffer = array[1..65521] of Char;
@@ -274,10 +271,10 @@ function TSquishMessageBase.Create(const Path: String): Boolean;
      LastFree:=0;
 
      EndFrame:=SizeOf(SquishBaseHeader);
-{
-     MaxMsg:=SquishMaxMsg;
-     KeepDays:=SquishKeepDays;
-}
+
+     MaxMsg:=0;
+     KeepDays:=0;
+
      SqHdrSize:=SizeOf(TSquishFrame);
 
      FillChar(Rsvd2, SizeOf(Rsvd2), 0);
