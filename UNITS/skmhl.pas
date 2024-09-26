@@ -288,7 +288,7 @@ type
   function GetLastRead(const UserNumber: Longint): Longint; virtual;
   procedure SetLastRead(const UserNumber: Longint; const Value: Longint); virtual;
   function GetReplyTo: Longint; virtual;
-  procedure SetReplyTo(const Value: Longint); virtual;
+  procedure SetReplyTo(const AReplyTo: Longint); virtual;
   procedure ResetDateTime;
   procedure SetBaseType(const BaseType: TBaseType); virtual;
   procedure PutOrigin(Address: TAddress; const Text: String); virtual;
@@ -1044,7 +1044,7 @@ function TMessageBase.GetReplyTo: Longint;
   Abstract;
  end;
 
-procedure TMessageBase.SetReplyTo(const Value: Longint);
+procedure TMessageBase.SetReplyTo(const AReplyTo: Longint);
  begin
   Abstract;
  end;

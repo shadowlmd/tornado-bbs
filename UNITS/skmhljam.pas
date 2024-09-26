@@ -123,11 +123,14 @@ type
   function GetReplyTo: Longint; virtual;
   function GetReplyFirst: Longint;
   function GetReplyNext: Longint;
-  procedure SetReplyTo(const Value: Longint); virtual;
+  procedure SetReplyTo(const AReplyTo: Longint); virtual;
   procedure SetReplyFirst(const AReplyFirst: Longint);
   procedure SetReplyNext(const AReplyNext: Longint);
   procedure GetMessageHeader(var AHeader: TJamMessageHeaderFirst);
   procedure GetStreams(var AHeaderLink, AIndexLink, ADataLink: PMessageBaseStream);
+  function GetHighWater: Longint;
+  procedure SetHighWater(const AHighWater: Longint);
+  procedure SeekHighWater;
   function GetRead: Boolean; virtual;
   procedure SetRead(const Value: Boolean); virtual;
   function GetFirstReply: Longint; virtual;
@@ -375,6 +378,7 @@ function TJamMessageBase.Create(const Path: String): Boolean;
    JamBaseHeader.ActiveMsgs:=0;
    JamBaseHeader.PwdCRC:=$FFFFFFFF;
    JamBaseHeader.BaseMsgNum:=1;
+   JamBaseHeader.HighWater:=0;
 
    HeaderLink^.Seek(0);
    HeaderLink^.Write(JamBaseHeader, SizeOf(JamBaseHeader));
@@ -1135,9 +1139,9 @@ function TJamMessageBase.GetReplyNext: Longint;
   GetReplyNext:=JamMessageHeader.JamHeader.ReplyNext;
  end;
 
-procedure TJamMessageBase.SetReplyTo(const Value: Longint);
+procedure TJamMessageBase.SetReplyTo(const AReplyTo: Longint);
  begin
-  JamMessageHeader.JamHeader.ReplyTo:=Value;
+  JamMessageHeader.JamHeader.ReplyTo:=AReplyTo;
  end;
 
 procedure TJamMessageBase.SetReplyFirst(const AReplyFirst: Longint);
@@ -1160,6 +1164,21 @@ procedure TJamMessageBase.GetStreams(var AHeaderLink, AIndexLink, ADataLink: PMe
   AHeaderLink:=HeaderLink;
   AIndexLink:=IndexLink;
   ADataLink:=DataLink;
+ end;
+
+function TJamMessageBase.GetHighWater: Longint;
+ begin
+  GetHighWater:=JamBaseHeader.HighWater;
+ end;
+
+procedure TJamMessageBase.SetHighWater(const AHighWater: Longint);
+ begin
+  JamBaseHeader.HighWater:=AHighWater;
+ end;
+
+procedure TJamMessageBase.SeekHighWater;
+ begin
+  Seek(JamBaseHeader.HighWater);
  end;
 
 function TJamMessageBase.GetRead: Boolean;

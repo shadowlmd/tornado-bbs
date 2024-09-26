@@ -150,7 +150,8 @@ type
   ActiveMsgs: Longint;
   PwdCRC: Longint;
   BaseMsgNum: Longint;
-  Extra: array[1..1000] of Char;
+  HighWater: Longint;
+  Extra: array[1..996] of Char;
  end;
 
  PFidoHeader     = ^TFidoHeader;
