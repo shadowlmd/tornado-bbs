@@ -856,6 +856,10 @@ Begin
   If H^. ReplyNum <> 0 Then
     H^. ReplyNum := Msg^. AbsoluteToRelative (H^. ReplyNum);
 
+  H^. ReplyTo := Msg^. GetReplyTo;
+  If H^. ReplyTo <> 0 Then
+    H^. ReplyTo := Msg^. AbsoluteToRelative (H^. ReplyTo);
+
   If Msg^. GetKludge (#1'MSGID', S) Then
     H^. MSGID := Copy (S, 9, 255);
 
@@ -879,10 +883,6 @@ Begin
     End;
   End;
 
-  i := Msg^. GetReplyTo;
-  If i <> 0 Then
-    i := Msg^. AbsoluteToRelative (i);
-
   Msg^. CloseMessage;
 
   If Pause Then
@@ -898,8 +898,8 @@ Begin
 
   S := Long2Str (H^. MsgNum) + '/' + Long2Str (Msg^. GetCount);
 
-  If i <> 0 Then
-    S := S + ' -' + Long2Str (i);
+  If H^. ReplyTo <> 0 Then
+    S := S + ' -' + Long2Str (H^. ReplyTo);
   If H^. ReplyNum <> 0 Then
     S := S + ' +' + Long2Str (H^. ReplyNum);
   If H^. IsRcvd Then
@@ -1255,6 +1255,20 @@ Begin
 
                  PostMsg (pmEdit, H^. MsgTo, H^. MsgSubj, '', '', 0, 'menu');
 
+                 Continue;
+               End;
+          12 : Begin                                       {GoToThreadPrev}
+                 If H^. ReplyTo <> 0 Then
+                   Msg^. Seek (H^. ReplyTo);
+                 If Not Msg^. SeekFound Then
+                   Msg^. Seek (H^. MsgNum);
+                 Continue;
+               End;
+          13 : Begin                                       {GoToThreadNext}
+                 If H^. ReplyNum <> 0 Then
+                   Msg^. Seek (H^. ReplyNum);
+                 If Not Msg^. SeekFound Then
+                   Msg^. Seek (H^. MsgNum);
                  Continue;
                End;
         End;
