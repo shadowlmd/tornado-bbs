@@ -1099,7 +1099,7 @@ Begin
 
     While Not FinishReading Do
     Begin
-      While Not ShowCurrentMsg (PauseAfterEach, True) Do
+      While Not ShowCurrentMsg (PauseAfterEach, (i <> 12) And (i <> 13)) Do
         If i = 5 Then Msg^. SeekPrev
                  Else Msg^. SeekNext;
 
