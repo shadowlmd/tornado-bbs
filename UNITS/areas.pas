@@ -574,17 +574,17 @@ Begin
   Begin
     If (Pos ('@', ToUser) <> 0) And (MsgArea. GateWay <> '') Then
     Begin
-      WToAddr := RelativeAddr (MsgArea. GateWay, MsgArea. Address);
+      WToAddr := MsgArea. GateWay;
       ComWriteLn (WToAddr, 0);
     End Else
     If PostMode = pmReply Then
     Begin
-      WToAddr := RelativeAddr (AddressToStrEx (H^. FromAddr), MsgArea. Address);
+      WToAddr := AddressToStrEx (H^. FromAddr);
       ComWriteLn (WToAddr, 0);
     End Else
     If PostMode = pmEdit Then
     Begin
-      WToAddr := RelativeAddr (AddressToStrEx (H^. ToAddr), MsgArea. Address);
+      WToAddr := AddressToStrEx (H^. ToAddr);
       ComWriteLn (WToAddr, 0);
     End Else
     Begin
@@ -740,7 +740,11 @@ Begin
   Begin
     If Priv Then Options := pfPrivate
             Else Options := 0;
-    ParseStrAddr (RelativeAddr (WToAddr, MsgArea. Address), DestAddr);
+
+    If MsgArea. AreaType = btNetmail Then
+      ParseStrAddr (RelativeAddr (WToAddr, MsgArea. Address), DestAddr)
+    Else
+      FillChar (DestAddr, SizeOf (DestAddr), #0);
 
     PostFile (PostMode, TmpTextName, MtoAbs (R. MsgGroup, R. MsgArea), R. Name,
       ToUser, Subj, AReply, eMail, MsgArea. Address, DestAddr, ReplyToNumRelative, Options);
