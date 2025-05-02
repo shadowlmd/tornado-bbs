@@ -873,14 +873,12 @@ function TJamMessageBase.WriteMessage: Boolean;
   Buffer:=CreateMessageBaseMemoryStream(MaxMessageSize);
 
   AddSubField(jamFrom, JamInfo.SourceName);
-  AddSubField(jamSource, AddressToStr(JamInfo.SourceAddress));
+  if AddressCompare(JamInfo.SourceAddress, NullAddress) <> 0 then
+   AddSubField(jamSource, AddressToStrEx(JamInfo.SourceAddress));
 
   AddSubField(jamTo, JamInfo.DestinationName);
-
   if AddressCompare(JamInfo.DestinationAddress, NullAddress) <> 0 then
-   AddSubField(jamDestination, AddressToStr(JamInfo.DestinationAddress))
-  else
-   AddSubField(jamDestination, AddressToStr(JamInfo.SourceAddress));
+   AddSubField(jamDestination, AddressToStrEx(JamInfo.DestinationAddress));
 
   if JamInfo.Subject <> '' then
    AddSubField(jamSubject, JamInfo.Subject);
