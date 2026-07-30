@@ -864,11 +864,11 @@ Begin
   If H^. ReplyTo <> 0 Then
     H^. ReplyTo := Msg^. AbsoluteToRelative (H^. ReplyTo);
 
-  If Msg^. GetKludge (#1'MSGID', S) Then
+  If Msg^. GetKludge (#1'MSGID:', S) Then
     H^. MSGID := Copy (S, 9, 255);
 
   If (MsgArea. AreaType = btNetmail) And
-    Msg^. GetKludge (#1'REPLYADDR', S) Then
+    Msg^. GetKludge (#1'REPLYADDR:', S) Then
     If Pos('<', S) <> 0 Then
       H^. eMail := Trim (ExtractWord (2, S, ['<', '>']))
     Else
