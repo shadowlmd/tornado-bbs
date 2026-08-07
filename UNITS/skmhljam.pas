@@ -918,7 +918,7 @@ function TJamMessageBase.WriteMessage: Boolean;
     if Copy(S, 1, 5) = #1'INTL' then else
     if Copy(S, 1, 5) = #1'FMPT' then else
     if Copy(S, 1, 5) = #1'TOPT' then else
-    if S[1] = #1 then AddSubField(jamUnknown, Copy(S, 2, 255)) else
+    if Copy(S, 1, 1) = #1 then AddSubField(jamUnknown, Copy(S, 2, 255)) else
      begin
       Buffer^.Write(Line^, LenASCIIZ(Line));
 
