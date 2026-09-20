@@ -3746,7 +3746,7 @@ Begin
                     SearchMessages (Parameter);
                 End;
 
-                _ScanPrivMail: SearchPrivate;
+                _ScanPrivMail: SearchPrivate (False);
                 _DownloadQWK: qwkDownLoad;
                 _UploadQWK: qwkUpLoad;
                 _SelectQWK: qwkSelect;

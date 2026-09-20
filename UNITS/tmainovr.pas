@@ -1502,7 +1502,7 @@ PassEnd:
       If EMSI. Session Then
       Begin
         If EMSI. CheckMail And (Cnf. ScanPrivMail <> atNo) Then
-          SearchPrivate;
+          SearchPrivate (True);
 
         If EMSI. CheckNewFiles And (Cnf. ScanNewFiles <> atNo) And
            (R. NoCalls > 1)
@@ -1513,7 +1513,7 @@ PassEnd:
         If (Cnf. ScanPrivMail = atYes) Or ((Cnf. ScanPrivMail = atAsk) And
            Query (lang (laSearchPrivateMsg), True, ofFramed))
         Then
-          SearchPrivate;
+          SearchPrivate (True);
 
         If (Cnf. ScanNewFiles <> atNo) And (R. NoCalls > 1) Then
           GlobalSearch (AllFilesMask, fsDate, Cnf. ScanNewFiles, '1');
@@ -2131,7 +2131,7 @@ Var
 
    cScan_NewFiles : GlobalSearch (AllFilesMask, fsDate, atAsk, '');
 
-   cScan_PrivMail : SearchPrivate;
+   cScan_PrivMail : SearchPrivate (False);
 
     cGlobalSearch : GlobSearch (fsName, lang (laSearchMask));
 

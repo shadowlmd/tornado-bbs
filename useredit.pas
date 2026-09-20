@@ -559,8 +559,8 @@ End;
 Function EditUserTVAdvanced: Boolean;
 Type
   TDialogData = Record
-    MsgsPosted, TimeUsedToday,
-    TotalTime     : String [10];
+    LastRead, MsgsPosted,
+    TimeUsedToday, TotalTime : String [10];
   End;
 
 Var
@@ -574,7 +574,7 @@ Var
 Begin
   FillChar (Data, SizeOf (Data), #0);
 
-  R. Assign (20, Round (Hi (WindMax)/2)-6, 59, Round (Hi (WindMax)/2)+5);
+  R. Assign (20, Round (Hi (WindMax)/2)-6, 59, Round (Hi (WindMax)/2)+6);
   Dialog := New (PEditUserDialog, Init (R, 'Advanced'));
   With Dialog^ Do
   Begin
@@ -584,37 +584,46 @@ Begin
     IL^. State := IL^. State + sfDefault;
     Insert (IL);
     R. Assign (2, 2, 18, 3);
-    View := New (PLabel, Init (R, '~M~essages Posted', IL) );
+    View := New (PLabel, Init (R, '~L~astRead', IL));
     Insert (View);
-    Str (FUser. MsgsPosted, Data. MsgsPosted);
+    Str (FUser. LastRead, Data. LastRead);
 
     R. Assign (20, 3, 32, 4);
     IL := New (PInputLine, Init (R, 10));
     IL^. SetValidator(New(PRangeValidator, Init (0, 2147483647)));
     Insert (IL);
     R. Assign (2, 3, 18, 4);
-    Insert (New (PLabel, Init (R, '~T~ime used today', IL)));
-    Str (FUser. TimeUsedToday, Data. TimeUsedToday);
+    View := New (PLabel, Init (R, '~M~essages Posted', IL));
+    Insert (View);
+    Str (FUser. MsgsPosted, Data. MsgsPosted);
 
     R. Assign (20, 4, 32, 5);
     IL := New (PInputLine, Init (R, 10));
     IL^. SetValidator(New(PRangeValidator, Init (0, 2147483647)));
     Insert (IL);
     R. Assign (2, 4, 18, 5);
+    Insert (New (PLabel, Init (R, '~T~ime used today', IL)));
+    Str (FUser. TimeUsedToday, Data. TimeUsedToday);
+
+    R. Assign (20, 5, 32, 6);
+    IL := New (PInputLine, Init (R, 10));
+    IL^. SetValidator(New(PRangeValidator, Init (0, 2147483647)));
+    Insert (IL);
+    R. Assign (2, 5, 18, 6);
     Insert (New (PLabel, Init (R, 'Time l~e~ft', IL)));
     Str (FUser. TotalTime, Data. TotalTime);
 
-    R. Assign (20, 6, 27, 7);
+    R. Assign (20, 7, 27, 8);
     View := New (PDisStaticText, Init (R, ' '+Long2Str(FUser. AvgCPS)));
     Insert (View);
-    R. Assign (2, 6, 14, 7);
+    R. Assign (2, 7, 14, 8);
     View := New (PLabel, Init (R, 'Average CPS', View));
     Insert (View);
 
-    R. Assign (4, 8, 18, 10);
+    R. Assign (4, 9, 18, 11);
     View := New (PButton, Init (R, 'O~k~', cmOk, bfDefault));
     Insert (View);
-    R. Assign (20, 8, 34, 10);
+    R. Assign (20, 9, 34, 11);
     View := New (PButton, Init (R, 'Cancel', cmCancel, bfNormal));
     Insert (View);
 
@@ -625,6 +634,7 @@ Begin
   If Desktop^. ExecView (Dialog) = cmOk Then
   Begin
     Dialog^. GetData (Data);
+    Val (Data. LastRead, FUser. LastRead, C);
     Val (Data. MsgsPosted, FUser. MsgsPosted, C);
     Val (Data. TimeUsedToday, FUser. TimeUsedToday, C);
     Val (Data. TotalTime, FUser. TotalTime, C);

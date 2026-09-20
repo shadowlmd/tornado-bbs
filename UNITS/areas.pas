@@ -83,7 +83,7 @@ Procedure TypeFile (Const FileName: PathStr);
 
 Procedure ReadMsgs;
 Procedure ListMsgs;
-Procedure SearchPrivate;
+Procedure SearchPrivate (Logon: Boolean);
 Procedure SearchMessages (Const Keywords: String);
 
 Procedure GlobalSearch (Const WildCard: String; Mode: tFSearchMode;
@@ -1088,7 +1088,7 @@ Begin
     End;
 
     Msg^. Seek (MsgNum);
-    If Not Msg^. SeekFound Then
+    If Not (Msg^. SeekFound And (Msg^. Current = MsgNum)) Then
       Msg^. Seek (1);
 
     New (H);
@@ -1187,10 +1187,9 @@ Begin
                    Cls;
                    Message (lang (laMsgSaved));
                    Msg^. Seek (H^. MsgNum);
-                   If Msg^. SeekFound Then
+                   If Msg^. SeekFound And (Msg^. Current = H^. MsgNum) Then
                    Begin
-                     If (Msg^. Current = H^.MsgNum) And
-                        (H^. ReplyNum = 0) Then
+                     If H^. ReplyNum = 0 Then
                      Begin
                        Msg^. OpenMessageHeader;
                        Msg^. SetFirstReply (Msg^. GetHighest);
@@ -1211,7 +1210,7 @@ Begin
                  Cls;
                  Message (lang (laMsgSaved));
                  Msg^. Seek (H^. MsgNum);
-                 If Msg^. SeekFound Then
+                 If Msg^. SeekFound And (Msg^. Current = H^. MsgNum) Then
                    Continue;
                End Else
                  Continue;
@@ -1264,14 +1263,14 @@ Begin
           12 : Begin                                       {GoToThreadPrev}
                  If H^. ReplyTo <> 0 Then
                    Msg^. Seek (H^. ReplyTo);
-                 If Not Msg^. SeekFound Then
+                 If Not (Msg^. SeekFound And (Msg^. Current = H^. ReplyTo)) Then
                    Msg^. Seek (H^. MsgNum);
                  Continue;
                End;
           13 : Begin                                       {GoToThreadNext}
                  If H^. ReplyNum <> 0 Then
                    Msg^. Seek (H^. ReplyNum);
-                 If Not Msg^. SeekFound Then
+                 If Not (Msg^. SeekFound And (Msg^. Current = H^. ReplyNum)) Then
                    Msg^. Seek (H^. MsgNum);
                  Continue;
                End;
@@ -1463,7 +1462,7 @@ ShowMsgs:
     Begin
       Msg^. Seek (LongInt (ShowNumsColl^. At (i)));
 
-      If Msg^. SeekFound Then
+      If Msg^. SeekFound And (Msg^. Current = LongInt (ShowNumsColl^. At (i))) Then
       Begin
         ShowCurrentMsg (True, False);
 
@@ -1499,7 +1498,7 @@ EndOfProc:
     Message (lang (laErrorMBClose));
 End;
 
-Procedure SearchPrivate;
+Procedure SearchPrivate (Logon: Boolean);
 Var
   PassedAreasColl   : PSortedLongIntCollection;
   PrivNumsColl      : PLongIntCollection;
@@ -1624,9 +1623,17 @@ Begin
         Else
           LR := R. LastRead;
 
-        Msg^. Seek (Msg^. GetLastRead (LR));
+        LR := Msg^. GetLastRead (LR);
 
-        If Msg^. SeekFound Then
+        If Logon And (LR = 0) And (j <> Str2Long (Cnf. ToSysOpArea)) Then
+        Begin
+          CloseMessageBase (Msg);
+          Continue;
+        End;
+
+        Msg^. Seek (LR);
+
+        If (Msg^. SeekFound) And (Msg^. Current = LR) Then
           Msg^. SeekNext;
       End Else
         Msg^. Seek (1);
@@ -1653,7 +1660,7 @@ Begin
       For a := 0 To PrivNumsColl^. Count-1 Do
       Begin
         Msg^. Seek (LongInt (PrivNumsColl^. At (a)));
-        If Msg^. SeekFound Then
+        If Msg^. SeekFound And (Msg^. Current = LongInt (PrivNumsColl^. At (a))) Then
         Begin
           ReadFound;
 
@@ -1810,7 +1817,7 @@ Show:
   Begin
     Msg^. Seek (LongInt (MatchNumsColl^. At (i)));
 
-    If Msg^. SeekFound Then
+    If Msg^. SeekFound And (Msg^. Current = LongInt (MatchNumsColl^. At (i))) Then
     Begin
       Found := True;
       ShowCurrentMsg (True, False);
