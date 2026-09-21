@@ -98,6 +98,7 @@ Type
                      NoCalls,
                      BirthDate,
                      LastDate,
+                     LastRead,
                      DownloadsK,
                      UploadsK : Longint;
                     end;
@@ -183,6 +184,15 @@ Type
                         Function Compare (Key1, Key2 : Pointer):
                           {$IFNDEF VIRTUALPASCAL} Integer; {$ELSE} LongInt; {$ENDIF} Virtual;
                       End;
+
+  PSortedLongIntCollection = ^TSortedLongIntCollection;
+  TSortedLongIntCollection = Object (TSortedCollection)
+                               Function Compare (Key1, Key2: Pointer):
+                                 {$IFNDEF VIRTUALPASCAL} Integer; {$ELSE} LongInt; {$ENDIF} Virtual;
+                               Procedure FreeItem (Item: Pointer); Virtual;
+                               Procedure FreeAll; Virtual;
+                               Function Contains (Item: LongInt): Boolean;
+                             End;
 
   { TMyStaticText }
 
@@ -272,6 +282,7 @@ Begin
   P^. NoCalls    := User. NoCalls;
   P^. BirthDate  := User. BirthDate;
   P^. LastDate   := User. LastDate;
+  P^. LastRead   := User. LastRead;
   P^. DownloadsK := User. DownloadsK;
   P^. UploadsK   := User. UploadsK;
   P^. Index      := Index;
@@ -1413,6 +1424,44 @@ Begin
   Compare := i;
 End;
 
+Function TSortedLongIntCollection. Compare (Key1, Key2: Pointer):
+  {$IFNDEF VIRTUALPASCAL} Integer; {$ELSE} LongInt; {$ENDIF}
+Var
+  Result : LongInt;
+
+Begin
+  Result := LongInt (Key1) - LongInt (Key2);
+
+{$IFNDEF VirtualPascal}
+  If Result < 0 Then
+    Compare := -1
+  Else
+    If Result > 0 Then
+      Compare := 1
+    Else
+      Compare := 0;
+{$ELSE}
+  Compare := Result;
+{$ENDIF}
+End;
+
+Function TSortedLongIntCollection. Contains (Item: LongInt): Boolean;
+Var
+  i : {$IFNDEF VIRTUALPASCAL} Integer; {$ELSE} LongInt; {$ENDIF}
+
+Begin
+  Contains := Search (Pointer (Item), i);
+End;
+
+Procedure TSortedLongIntCollection. FreeItem (Item: Pointer);
+Begin
+End;
+
+Procedure TSortedLongIntCollection. FreeAll;
+Begin
+  Count := 0;
+End;
+
 Procedure TMyUserCollection. AtPut (
   Index: {$IFNDEF VIRTUALPASCAL} Integer; {$ELSE} LongInt; {$ENDIF} Item: Pointer);
 Begin
@@ -1576,6 +1625,35 @@ Begin
   GetName := UpString (TUser. Name)
 End;
 
+Function GetNextLastRead: LongInt;
+Var
+  cLR : PSortedLongIntCollection;
+  I   : Integer;
+  Res : LongInt;
+Begin
+  Res := 0;
+  cLR := New (PSortedLongIntCollection, Init (128, 32));
+  cLR^. Insert (Pointer (0));
+  For I := 0 To L^. Count - 1 Do
+    cLR^. Insert (Pointer (PUser (L^. At (I))^. LastRead));
+
+  For I := 1 To cLR^. Count - 1 Do
+  Begin
+    Res := LongInt (cLR^. At (I - 1));
+    If LongInt (cLR^. At (I)) - Res > 1 Then
+    Begin
+      Inc (Res);
+      Break;
+    End;
+  End;
+
+  If Res = LongInt (cLR^. At (cLR^. Count - 1)) Then
+    Res := LongInt (cLR^. At (cLR^. Count - 1)) + 1;
+
+  Dispose (cLR, Done);
+  GetNextLastRead := Res;
+End;
+
 Begin
   If Event. What = evCommand Then
    If Event. Command = cmQuit Then
@@ -1629,6 +1707,7 @@ Begin
 
                                        FUser. FirstDate := DateL;
                                        FUser. LastDate := FUser. FirstDate;
+                                       FUser. LastRead := GetNextLastRead;
                                        FUser. BirthDate := Date2Long (ReFormatDate ('01-01-1970', 'DD-MM-YYYY',
                                          DefaultDateMask));
                                        FUser. TimeUsedToday := 0;
