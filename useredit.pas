@@ -98,18 +98,12 @@ Type
                      NoCalls,
                      BirthDate,
                      LastDate,
-                     LastRead,
                      DownloadsK,
                      UploadsK : Longint;
                     end;
 
   PFile = ^FilesRecord;
   PUser = ^TrimUsersRecord;
-
-  PSortedLongIntCollection = ^TSortedLongIntCollection;
-  TSortedLongIntCollection = Object (TSortedCollection)
-    Function Compare (Key1, Key2: Pointer): Integer; Virtual;
-  End;
 
   SortType = (None, Name, BirthDate, LastDate, NoCalls, Security, DownloadsK,
               UploadsK);
@@ -278,7 +272,6 @@ Begin
   P^. NoCalls    := User. NoCalls;
   P^. BirthDate  := User. BirthDate;
   P^. LastDate   := User. LastDate;
-  P^. LastRead   := User. LastRead;
   P^. DownloadsK := User. DownloadsK;
   P^. UploadsK   := User. UploadsK;
   P^. Index      := Index;
@@ -288,42 +281,6 @@ End;
 Procedure DisposePUser (P: PUser);
 Begin
   If P <> Nil Then FreeMem (P, SizeOf (TrimUsersRecord));
-End;
-
-Function TSortedLongIntCollection. Compare (Key1, Key2: Pointer): Integer;
-Begin
-  If LongInt (Key1) < LongInt (Key2) Then Compare := -1
-  Else If LongInt (Key1) > LongInt (Key2) Then Compare := 1
-  Else Compare := 0;
-End;
-
-Function GetNextLastRead: LongInt;
-Var
-  cLR : PSortedLongIntCollection;
-  I   : Integer;
-  Res : LongInt;
-Begin
-  Res := 0;
-  cLR := New (PSortedLongIntCollection, Init (128, 32));
-  cLR^. Insert (Pointer (0));
-  For I := 0 To L^. Count - 1 Do
-    cLR^. Insert (Pointer (PUser (L^. At (I))^. LastRead));
-
-  For I := 1 To cLR^. Count - 1 Do
-  Begin
-    Res := LongInt (cLR^. At (I - 1));
-    If LongInt (cLR^. At (I)) - Res > 1 Then
-    Begin
-      Inc (Res);
-      Break;
-    End;
-  End;
-
-  If Res = LongInt (cLR^. At (cLR^. Count - 1)) Then
-    Res := LongInt (cLR^. At (cLR^. Count - 1)) + 1;
-
-  Dispose (cLR, Done);
-  GetNextLastRead := Res;
 End;
 
 Function NewPFile (F: FilesRecord): PFile;
@@ -768,7 +725,7 @@ Begin
     Insert(BPvt);
 
     R.Assign(3, 2, 72, 3);
-    Insert(New(PStaticText, Init(R, Replicate('ï¿½', 69))));
+    Insert(New(PStaticText, Init(R, Replicate('Ä', 69))));
 
     R.Assign(3, 1, 71, 2);
     StTag := New(PStaticText, Init(R, Replicate(' ',  3) +
@@ -861,7 +818,7 @@ End;
 (****-------------- begin TVision ---------------------------------****)
 procedure TWinBackground.Draw;
 const
-  Ch: Array[0..9] of Char = '12345 ï¿½ï¿½ï¿½ï¿½';
+  Ch: Array[0..9] of Char = '12345 °±²Û';
   Ws: Array[-1..13] of System. Word = ($2007, $b071, $b179, $b279, $db79,
     $b209, $b171, $b271, $b109, $db71, $b201, $b009, $b101, $b001, $2000);
 var
@@ -1002,7 +959,7 @@ Type
 
 {some from APABSPCL.PAS by TurboPower}
 Const
-  {ï¿½ï¿½ï¿½ï¿½ ï¿½ ï¿½ï¿½, ï¿½ï¿½ (ï¿½) ï¿½ï¿½ï¿½ ;)}
+  {¯®çâ¨ â® ¦¥, ­® (‘) ¬®© ;)}
   EmuTypeString : Array [teANSI..teAvatar] Of String [6] =
     ('ANSI  ', 'TTY   ', 'AVATAR');
 
@@ -1536,7 +1493,7 @@ Begin
     R. Assign (41, 1, 45, 2);
     Insert (New (PStaticText, Init (R, 'Sec.')));
     R. Assign (1, 2, 49, 3);
-    Insert (New (PStaticText, Init (R, Replicate('ï¿½', 48))));
+    Insert (New (PStaticText, Init (R, Replicate('Ä', 48))));
     R. Assign (49, 3, 50, Hi (WindMax)-5);
     B := New (PScrollBar, Init (R));
     Insert (B);
@@ -1577,10 +1534,10 @@ Begin
     begin
       Rewrite(FF);
       WriteLn(FF, ';');
-      WriteLn(FF, '; ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ä¨£ï¿½ï¿½æ¨¨ ï¿½à®£à ¬ï¿½ï¿½ à¥¤ï¿½ï¿½ï¿½à®¢ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ì§®ï¿½ï¿½â¥«ï¿½ï¿½.');
+      WriteLn(FF, '; ” ©« ª®­ä¨£ãà æ¨¨ ¯à®£à ¬¬ë à¥¤ ªâ¨à®¢ ­¨ï ¯®«ì§®¢ â¥«¥©.');
       WriteLn(FF, ';');
-      WriteLn(FF, 'Sort None         ; ï¿½ï¿½ï¿½à¨© ï¿½ï¿½ï¿½à®¢ï¿½ï¿½ á¯¨áª  ï¿½ï¿½ï¿½ì§®ï¿½ï¿½â¥«ï¿½ï¿½ ï¿½ à¥¤ï¿½ï¿½ï¿½ï¿½.');
-      WriteLn(FF, '                  ; ï¿½ï¿½ï¿½ï¿½ï¿½â¨¬ï¿½ ï¿½ï¿½ï¿½ç¥­ï¿½ï¿½ ï¿½â®£ï¿½ ï¿½ï¿½à ¬ï¿½ï¿½ï¿½:');
+      WriteLn(FF, 'Sort None         ; Šà¨â¥à¨© á®àâ¨à®¢ª¨ á¯¨áª  ¯®«ì§®¢ â¥«¥© ¢ à¥¤ ªâ®à¥.');
+      WriteLn(FF, '                  ; „®¯ãáâ¨¬ë¥ §­ ç¥­¨ï íâ®£® ¯ à ¬¥âà :');
       WriteLn(FF, '                  ; None,');
       WriteLn(FF, '                  ; Name,');
       WriteLn(FF, '                  ; Security,');
@@ -1672,7 +1629,6 @@ Begin
 
                                        FUser. FirstDate := DateL;
                                        FUser. LastDate := FUser. FirstDate;
-                                       FUser. LastRead := GetNextLastRead;
                                        FUser. BirthDate := Date2Long (ReFormatDate ('01-01-1970', 'DD-MM-YYYY',
                                          DefaultDateMask));
                                        FUser. TimeUsedToday := 0;
@@ -2052,7 +2008,7 @@ Begin
       Str(DT.Month, S1);  S := S + '.' + LeftPadCh(S1, '0', 2);
       Str(DT.Year,  S1);  S := S + '.' + S1;
       Str (F. Size, TempS);
-      if F.Marked then S1 := 'ï¿½ ' else S1 := '  ';
+      if F.Marked then S1 := 'û ' else S1 := '  ';
       if F.Owned then
       begin
         S := S1 + PadCh(PrString(F. Owner), ' ', 29) +
