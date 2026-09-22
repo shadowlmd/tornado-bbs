@@ -1648,7 +1648,7 @@ Begin
 
         If Not H^. IsRcvd And
           (((UpName <> Nil) And (H^. MsgTo = UpName^)) Or
-           ((UpAlias <> Nil) And (H^. MsgTo = UpAlias^))) And
+           ((UpAlias <> Nil) And (UpAlias^ <> '') And (H^. MsgTo = UpAlias^))) And
           ((MsgArea. AreaType <> btNetmail) Or
            (AddressCompare (H^. ToAddr, MsgArea. Address) = 0))
         Then
