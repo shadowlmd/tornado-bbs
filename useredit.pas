@@ -214,6 +214,14 @@ Type
                      Procedure Error; Virtual;
                    End;
 
+  PLastReadValidator = ^TLastReadValidator;
+  TLastReadValidator = Object (TRangeValidator)
+                         Duplicate : Boolean;
+                         DupName   : String [36];
+                         Function IsValid(const S: string): Boolean; virtual;
+                         Procedure Error; Virtual;
+                       End;
+
   PMyRadioButtons = ^TMyRadioButtons;
   TMyRadioButtons = Object (TRadioButtons)
                      procedure Draw; virtual;
@@ -567,6 +575,31 @@ Begin
   End;
 End;
 
+{ Returns the smallest non-negative LastRead not used by any user
+  except the one being edited }
+Function GetNextLastRead: LongInt;
+Var
+  cLR : PSortedLongIntCollection;
+  I   : Integer;
+  Res : LongInt;
+Begin
+  cLR := New (PSortedLongIntCollection, Init (128, 32));
+  For I := 0 To L^. Count - 1 Do
+    If (I <> L^. CurrentUser) And (PUser (L^. At (I))^. LastRead >= 0) Then
+      cLR^. Insert (Pointer (PUser (L^. At (I))^. LastRead));
+
+  { cLR is sorted and has no duplicates, so the first gap is the answer }
+  Res := 0;
+  For I := 0 To cLR^. Count - 1 Do
+    If LongInt (cLR^. At (I)) = Res Then
+      Inc (Res)
+    Else
+      Break;
+
+  Dispose (cLR, Done);
+  GetNextLastRead := Res;
+End;
+
 Function EditUserTVAdvanced: Boolean;
 Type
   TDialogData = Record
@@ -591,7 +624,7 @@ Begin
   Begin
     R. Assign (20, 2, 32, 3);
     IL := New (PInputLine, Init (R, 10));
-    IL^.SetValidator(New(PRangeValidator, Init (0, 2147483647)));
+    IL^.SetValidator(New(PLastReadValidator, Init (-1, 2147483647)));
     IL^. State := IL^. State + sfDefault;
     Insert (IL);
     R. Assign (2, 2, 18, 3);
@@ -645,7 +678,10 @@ Begin
   If Desktop^. ExecView (Dialog) = cmOk Then
   Begin
     Dialog^. GetData (Data);
-    Val (Data. LastRead, FUser. LastRead, C);
+    If Data. LastRead = '' Then
+      FUser. LastRead := GetNextLastRead
+    Else
+      Val (Data. LastRead, FUser. LastRead, C);
     Val (Data. MsgsPosted, FUser. MsgsPosted, C);
     Val (Data. TimeUsedToday, FUser. TimeUsedToday, C);
     Val (Data. TotalTime, FUser. TotalTime, C);
@@ -1614,7 +1650,6 @@ Begin
   Inherited Done;
 End;
 
-
 Procedure TUserListBox. HandleEvent (Var Event: TEvent);
 Var
   I, J: Word;
@@ -1623,35 +1658,6 @@ Var
 Function GetName (TUser: TrimUsersRecord): String;
 Begin
   GetName := UpString (TUser. Name)
-End;
-
-Function GetNextLastRead: LongInt;
-Var
-  cLR : PSortedLongIntCollection;
-  I   : Integer;
-  Res : LongInt;
-Begin
-  Res := 0;
-  cLR := New (PSortedLongIntCollection, Init (128, 32));
-  cLR^. Insert (Pointer (0));
-  For I := 0 To L^. Count - 1 Do
-    cLR^. Insert (Pointer (PUser (L^. At (I))^. LastRead));
-
-  For I := 1 To cLR^. Count - 1 Do
-  Begin
-    Res := LongInt (cLR^. At (I - 1));
-    If LongInt (cLR^. At (I)) - Res > 1 Then
-    Begin
-      Inc (Res);
-      Break;
-    End;
-  End;
-
-  If Res = LongInt (cLR^. At (cLR^. Count - 1)) Then
-    Res := LongInt (cLR^. At (cLR^. Count - 1)) + 1;
-
-  Dispose (cLR, Done);
-  GetNextLastRead := Res;
 End;
 
 Begin
@@ -1703,6 +1709,8 @@ Begin
                 Case Event. Command Of
                      cmInsertUser :
                                      Begin
+                                       L^. CurrentUser := -1;
+
                                        FillChar (FUser, SizeOf (tUser), #0);
 
                                        FUser. FirstDate := DateL;
@@ -1720,7 +1728,6 @@ Begin
                                        FUser. More := True;
                                        FUser. Emu := teAnsi;
                                        FUser. ReReadLimit := True;
-                                       L^. CurrentUser := -1;
                                        If EditUserTV (FUser) Then
                                        Begin
                                          if L^.Count=0 then EnableCommands(UserCommandSet);
@@ -2044,8 +2051,6 @@ Begin
 
 End;
 
-
-
 Function TUserListBox. GetText (
   Item: {$IFNDEF VIRTUALPASCAL} Integer; {$ELSE} LongInt; {$ENDIF}
   MaxLen: {$IFNDEF VIRTUALPASCAL} Integer {$ELSE} LongInt {$ENDIF}): String;
@@ -2232,6 +2237,47 @@ begin
                           else
    S := 'Input does not conform to picture:'#13#10' %s';
   MessageBox(S, @Pic, mfError + mfOKButton);
+end;
+
+{ LastRead must be unique among all users except the one being edited.
+  Empty value means "assign next free number", -1 may be shared }
+Function TLastReadValidator. IsValid(const S: string): Boolean;
+var
+  I     : Integer;
+  Value : LongInt;
+  Code  : {$IFDEF VIRTUALPASCAL} LongInt {$ELSE} Integer {$ENDIF};
+begin
+  Duplicate := False;
+  IsValid := True;
+  if S = '' then Exit;
+  IsValid := False;
+  if not inherited IsValid(S) then Exit;
+
+  Val (S, Value, Code);
+  IsValid := True;
+  if Value = -1 then Exit;
+  For I := 0 To L^. Count - 1 Do
+    If (I <> L^. CurrentUser) And (PUser (L^. At (I))^. LastRead = Value) Then
+    Begin
+      Duplicate := True;
+      DupName := PUser (L^. At (I))^. Name;
+      IsValid := False;
+      Exit;
+    End;
+end;
+
+Procedure TLastReadValidator. Error;
+var
+  P: PString;
+begin
+  if Duplicate then
+  begin
+    P := @DupName;
+    MessageBox('  This LastRead number is already'#13#10'  used by %s', @P,
+      mfError + mfOKButton);
+  end
+  else
+    inherited Error;
 end;
 
 procedure TMyRadioButtons.Draw;
