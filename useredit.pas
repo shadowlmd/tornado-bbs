@@ -1462,23 +1462,14 @@ End;
 
 Function TSortedLongIntCollection. Compare (Key1, Key2: Pointer):
   {$IFNDEF VIRTUALPASCAL} Integer; {$ELSE} LongInt; {$ENDIF}
-Var
-  Result : LongInt;
-
 Begin
-  Result := LongInt (Key1) - LongInt (Key2);
-
-{$IFNDEF VirtualPascal}
-  If Result < 0 Then
+  If LongInt (Key1) < LongInt (Key2) Then
     Compare := -1
   Else
-    If Result > 0 Then
+    If LongInt (Key1) > LongInt (Key2) Then
       Compare := 1
     Else
       Compare := 0;
-{$ELSE}
-  Compare := Result;
-{$ENDIF}
 End;
 
 Function TSortedLongIntCollection. Contains (Item: LongInt): Boolean;
