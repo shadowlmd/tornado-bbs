@@ -1182,12 +1182,11 @@ function GenerateMSGID: String;
 
   repeat
    GetCurrentMessageBaseDateTime(DateTime^);
-   with DateTime^ do
-    Stamp:=((GregorianToJulian(DateTime^) mod D0) * 86400 +
-            Longint(Hour) * 3600 +
-            Longint(Min) * 60 +
-            Sec) * TicksPerSec +
-           Longint(Sec100) * TicksPerSec div 100;
+   Stamp:=((GregorianToJulian(DateTime^) mod D0) * 86400 +
+           Longint(DateTime^.Hour) * 3600 +
+           Longint(DateTime^.Min) * 60 +
+           DateTime^.Sec) * TicksPerSec +
+          Longint(DateTime^.Sec100) * TicksPerSec div 100;
   until OldMSGID <> Stamp;
 
   Dispose(DateTime);
