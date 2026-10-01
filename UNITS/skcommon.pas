@@ -1167,9 +1167,13 @@ function LongintToHex(const Stamp: Longint): String;
                 Digits[Lo(StampW.L) and $F];
  end;
 
+{ Stamp is a tick count within a 1461-day (4-year) cycle, 34 ticks per
+  second (~29 ms): 1461 * 86400 * 34 = 4291862400 < 2^32, so the value
+  is unique for 4 years. Relies on Longint wraparound ($Q-). }
 function GenerateMSGID: String;
  const
   OldMSGID: Longint = 0;
+  TicksPerSec = 34;
  var
   DateTime: PMessageBaseDateTime;
   Stamp: Longint;
@@ -1179,13 +1183,11 @@ function GenerateMSGID: String;
   repeat
    GetCurrentMessageBaseDateTime(DateTime^);
    with DateTime^ do
-    Stamp:=Longint(Year mod 4) shl 30 +
-           Longint(Month) shl 26 +
-           Longint(Day) shl 21 +
-           Longint(Hour) shl 16 +
-           Min shl 10 +
-           Sec shl 4 +
-           (Sec100 div 7);
+    Stamp:=((GregorianToJulian(DateTime^) mod D0) * 86400 +
+            Longint(Hour) * 3600 +
+            Longint(Min) * 60 +
+            Sec) * TicksPerSec +
+           Longint(Sec100) * TicksPerSec div 100;
   until OldMSGID <> Stamp;
 
   Dispose(DateTime);
