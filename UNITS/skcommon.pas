@@ -154,23 +154,23 @@ type
   Extra: array[1..996] of Char;
  end;
 
- PFidoHeader     = ^TFidoHeader;
- TFidoHeader     = packed record
-  FromUser   : array[1..36] of Char;
-  ToUser     : array[1..36] of Char;
-  Subject    : array[1..72] of Char;
-  DateTime   : array[1..20] of Char;
-  TimesRead  : System.Word;
-  DestNode   : System.Word;
-  OrigNode   : System.Word;
-  Cost       : System.Word;
-  OrigNet    : System.Word;
-  DestNet    : System.Word;
+ PFidoHeader = ^TFidoHeader;
+ TFidoHeader = packed record
+  FromUser: array[1..36] of Char;
+  ToUser: array[1..36] of Char;
+  Subject: array[1..72] of Char;
+  DateTime: array[1..20] of Char;
+  TimesRead: System.Word;
+  DestNode: System.Word;
+  OrigNode: System.Word;
+  Cost: System.Word;
+  OrigNet: System.Word;
+  DestNet: System.Word;
   DateWritten: Longint;
   DateArrived: Longint;
-  ReplyTo    : System.Word;
-  Attr       : System.Word;
-  ReplyNext  : System.Word;
+  ReplyTo: System.Word;
+  Attr: System.Word;
+  ReplyNext: System.Word;
  end;
 
 const
